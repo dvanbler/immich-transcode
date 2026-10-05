@@ -1,0 +1,49 @@
+# Throwaway Immich v3.2.4 for integration tests. All data lives in tmpfs and
+# disappears with `docker compose down`. Never point the tests at a real
+# library.
+#
+#   docker compose -f test/integration/docker-compose.yml up -d --wait
+#   go test -tags integration ./test/integration/ -v
+#   docker compose -f test/integration/docker-compose.yml down -v
+name: immich-transcode-test
+
+services:
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:v3.2.4
+    environment:
+      DB_HOSTNAME: database
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_DATABASE_NAME: immich
+      REDIS_HOSTNAME: redis
+      IMMICH_MACHINE_LEARNING_ENABLED: "false"
+    tmpfs:
+      - /data
+    ports:
+      - "127.0.0.1:2299:2283"
+    depends_on:
+      redis:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+    healthcheck:
+      disable: false
+
+  redis:
+    image: docker.io/valkey/valkey:9@sha256:70739f85ad2ee01a726a965584a0f94895f01b0c60b3cc8b0aeef11eaa6888cf
+    healthcheck:
+      test: redis-cli ping | grep -q PONG || exit 1
+      interval: 2s
+
+  database:
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: immich
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    tmpfs:
+      - /var/lib/postgresql/data
+    shm_size: 128mb
+    healthcheck:
+      disable: false

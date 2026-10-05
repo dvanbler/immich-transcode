@@ -1,0 +1,36 @@
+# immich-transcode configuration.
+# Default location: ~/.config/immich-transcode/config.yaml (Linux),
+# ~/Library/Application Support/immich-transcode/config.yaml (macOS),
+# %AppData%\immich-transcode\config.yaml (Windows). Override with --config.
+# The API key is never read from this file: set IMMICH_API_KEY.
+
+server_url: http://immich.local:2283
+
+# Originals are kept here as backup/YYYY/MM/<assetId>_<name>. Never deleted
+# by the tool. The manifest and log also live here unless set below.
+backup_dir: /mnt/archive/immich-originals
+
+# Temporary encodes. Needs free space for the largest output being made.
+work_dir: /var/tmp/immich-transcode
+
+# manifest: /mnt/archive/immich-originals/manifest.db
+# log_file: /mnt/archive/immich-originals/immich-transcode.log
+
+# External tools (names on PATH or absolute paths).
+ffmpeg: ffmpeg
+ffprobe: ffprobe
+exiftool: exiftool
+
+crf: 26
+preset: slow
+min_savings_percent: 25   # keep the original unless the encode is at least this much smaller
+min_size: 100MB           # ignore smaller videos
+concurrency: 1            # assets processed at once (each runs one ffmpeg)
+metadata_timeout: 10m     # wait for Immich to extract metadata from an upload
+
+bpp:
+  scan_min: 0.12          # scan: skip videos estimated below this (codec unknown yet)
+  h264: 0.15              # skip H.264 already below this real bits-per-pixel
+  hevc: 0.12              # skip HEVC already below this
+  other: 0.12             # any other codec (vp9, mpeg4, ...)
+  estimated_output: 0.05  # assumed HEVC output bpp, for scan's savings estimate only

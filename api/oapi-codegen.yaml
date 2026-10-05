@@ -1,0 +1,22 @@
+# Generates the Immich client used by immich-transcode.
+# Spec pinned to Immich v3.2.4: open-api/immich-openapi-specs.json
+package: api
+output: client.gen.go
+generate:
+  client: true
+  models: true
+output-options:
+  skip-prune: false
+  include-operation-ids:
+    - getServerVersion
+    - getMyApiKey
+    - getMyUser
+    - searchAssets
+    - getAssetInfo
+    - downloadAsset
+    - uploadAsset
+    - copyAsset
+    - updateAsset
+    - deleteAssets
+    - bulkTagAssets
+    - restoreAssets

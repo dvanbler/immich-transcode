@@ -1,0 +1,195 @@
+package cli
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/spf13/cobra"
+
+	"immich-transcode/internal/config"
+	"immich-transcode/internal/manifest"
+	"immich-transcode/internal/pipeline"
+)
+
+type runFlags struct {
+	apply         bool
+	allowFaceLoss bool
+	retryFailed   bool
+	limit         int
+	assets        []string
+	minSize       config.Size
+	crf           int
+}
+
+func (a *app) runCmd() *cobra.Command {
+	f := runFlags{minSize: config.Default().MinSize}
+	cmd := &cobra.Command{
+		Use:   "run",
+		Short: "Process candidates (dry run unless --apply)",
+		Long: `Process candidate videos through the pipeline.
+
+Without --apply this is a dry run: originals are downloaded to the backup
+directory, transcoded and validated locally, but nothing is uploaded to or
+deleted from Immich. A later "run --apply" or "resume --apply" continues
+from the validated encode.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if !cmd.Flags().Changed("min-size") {
+				f.minSize = a.cfg.MinSize
+			}
+			if !cmd.Flags().Changed("crf") {
+				f.crf = a.cfg.CRF
+			}
+			a.cfg.CRF = f.crf
+			return a.process(f, func(ctx context.Context, s *session) ([]string, error) {
+				if len(f.assets) > 0 {
+					return f.assets, nil
+				}
+				cands, _, err := findCandidates(ctx, s, int64(f.minSize))
+				if err != nil {
+					return nil, err
+				}
+				var ids []string
+				for _, c := range cands {
+					switch c.Manifest {
+					case manifest.Failed:
+						if !f.retryFailed {
+							continue
+						}
+					case manifest.NeedsConfirm:
+						if !f.allowFaceLoss {
+							continue
+						}
+					}
+					ids = append(ids, c.Asset.Id.String())
+				}
+				return ids, nil
+			})
+		},
+	}
+	fl := cmd.Flags()
+	fl.BoolVar(&f.apply, "apply", false, "upload replacements and trash originals (default is a dry run)")
+	fl.IntVar(&f.limit, "limit", 0, "process at most N assets (0 = no limit)")
+	fl.StringSliceVar(&f.assets, "asset", nil, "process only this asset id (repeatable)")
+	fl.Var(&f.minSize, "min-size", "only consider videos at least this large (e.g. 200MB; config min_size)")
+	fl.IntVar(&f.crf, "crf", 0, "x265 CRF (default from config, 26)")
+	fl.BoolVar(&f.allowFaceLoss, "allow-face-loss", false, "replace videos even if named people will lose their face assignments")
+	fl.BoolVar(&f.retryFailed, "retry-failed", false, "also retry assets that failed in an earlier run")
+	return cmd
+}
+
+func (a *app) resumeCmd() *cobra.Command {
+	var f runFlags
+	cmd := &cobra.Command{
+		Use:   "resume",
+		Short: "Continue assets left partway through the pipeline",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return a.process(f, func(ctx context.Context, s *session) ([]string, error) {
+				recs, err := s.store.List(ctx)
+				if err != nil {
+					return nil, err
+				}
+				var ids []string
+				for _, r := range recs {
+					switch {
+					case r.State.InProgress(),
+						r.State == manifest.Failed && f.retryFailed,
+						r.State == manifest.NeedsConfirm && f.allowFaceLoss:
+						ids = append(ids, r.AssetID)
+					}
+				}
+				if len(ids) == 0 {
+					a.console.Printf("Nothing to resume.")
+				}
+				return ids, nil
+			})
+		},
+	}
+	fl := cmd.Flags()
+	fl.BoolVar(&f.apply, "apply", false, "upload replacements and trash originals (default is a dry run)")
+	fl.IntVar(&f.limit, "limit", 0, "process at most N assets (0 = no limit)")
+	fl.BoolVar(&f.allowFaceLoss, "allow-face-loss", false, "also continue needs_confirm assets, dropping face assignments")
+	fl.BoolVar(&f.retryFailed, "retry-failed", false, "also retry failed assets")
+	return cmd
+}
+
+// process runs the pipeline over the ids chosen by pick.
+func (a *app) process(f runFlags, pick func(context.Context, *session) ([]string, error)) error {
+	perms := permsDryRun
+	if f.apply {
+		perms = permsApply
+	}
+	var proc *pipeline.Processor
+	ctx, stop := a.interruptible(func() {
+		if proc != nil {
+			proc.RequestStop()
+		}
+	})
+	defer stop()
+	s, err := a.preflight(ctx, preflightOpts{perms: perms, needTools: true})
+	if err != nil {
+		return err
+	}
+	defer s.close()
+
+	ids, err := pick(ctx, s)
+	if err != nil {
+		return err
+	}
+	if f.limit > 0 && len(ids) > f.limit {
+		ids = ids[:f.limit]
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	mode := "DRY RUN (nothing will be uploaded or deleted; add --apply)"
+	if f.apply {
+		mode = "APPLY"
+	}
+	a.console.Printf("\n%s: %d asset(s), crf %d, preset %s, concurrency %d\n", mode, len(ids), s.cfg.CRF, s.cfg.Preset, s.cfg.Concurrency)
+	s.log.Info("run start", "mode", mode, "assets", len(ids), "crf", s.cfg.CRF, "preset", s.cfg.Preset)
+
+	proc = &pipeline.Processor{
+		Cfg:     s.cfg,
+		Opts:    pipeline.Options{Apply: f.apply, AllowFaceLoss: f.allowFaceLoss, RetryFailed: f.retryFailed, CRF: s.cfg.CRF},
+		Immich:  s.client,
+		Tools:   s.tools,
+		Store:   s.store,
+		Log:     s.log,
+		Console: a.console,
+		UserID:  s.userID,
+	}
+	outcomes := proc.Run(ctx, ids)
+
+	var saved, potential int64
+	counts := map[manifest.State]int{}
+	failed, interrupted := 0, false
+	for _, o := range outcomes {
+		interrupted = interrupted || o.Interrupted
+		counts[o.State]++
+		saved += o.Saved()
+		if o.State == manifest.Validated {
+			potential += o.OldSize - o.NewSize
+		}
+		if o.Err != nil {
+			failed++
+		}
+	}
+	a.console.Printf("\nProcessed %d of %d asset(s).", len(outcomes), len(ids))
+	for st, n := range counts {
+		if st != "" {
+			a.console.Printf("  %-20s %d", st, n)
+		}
+	}
+	a.console.Printf("Saved this run: %s", config.HumanBytes(saved))
+	if potential > 0 {
+		a.console.Printf("Validated, awaiting --apply: %s would be saved", config.HumanBytes(potential))
+	}
+	s.log.Info("run end", "processed", len(outcomes), "saved_bytes", saved, "errors", failed)
+	if interrupted || len(outcomes) < len(ids) {
+		return fmt.Errorf("interrupted; run `immich-transcode resume` to continue")
+	}
+	if failed > 0 {
+		return fmt.Errorf("%d asset(s) had errors; see `immich-transcode status` and %s", failed, s.cfg.LogFile)
+	}
+	return nil
+}

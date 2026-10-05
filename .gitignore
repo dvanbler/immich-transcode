@@ -1,0 +1,6 @@
+/immich-transcode
+/immich-transcode.exe
+/dist/
+*.db
+*.db-wal
+*.db-shm
