@@ -164,6 +164,13 @@ server: the original is in the trash, and the replacement has the same
 timeline date and location and keeps its album, favorite, description, rating
 and tags.
 
+A second test adds a partner user who shares their library with you and is
+shown in your timeline. It first checks that Immich's search really does
+return the partner's video. It then checks that `scan` leaves it out and that
+`run --apply --asset <id>` refuses it. Finally it checks that the video was
+not changed, recorded in the manifest, downloaded or copied into your
+library.
+
 The Immich client is generated with oapi-codegen (`make generate`), limited to
 the operations listed in [`api/oapi-codegen.yaml`](api/oapi-codegen.yaml). To
 target a newer server, replace `api/immich-openapi-specs.json` with that

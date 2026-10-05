@@ -138,6 +138,13 @@ func (p *Processor) Process(ctx context.Context, id string) Outcome {
 		return out
 	}
 	out.FileName = asset.OriginalFileName
+	// Checked before the manifest is touched: other users' assets (partner
+	// or shared-album videos) are never recorded, downloaded or changed.
+	if asset.OwnerId.String() != p.UserID {
+		out.Err = errNotOwner
+		p.Console.Printf("%s: %v", asset.OriginalFileName, out.Err)
+		return out
+	}
 	rec, err := p.Store.Ensure(ctx, id, asset.OriginalFileName, fileSize(asset))
 	if err != nil {
 		out.Err = err
@@ -217,7 +224,10 @@ func (p *Processor) finish(out Outcome, rec manifest.Record) Outcome {
 	return out
 }
 
-var errNothingToDo = errors.New("nothing to do")
+var (
+	errNothingToDo = errors.New("nothing to do")
+	errNotOwner    = errors.New("asset belongs to another user; only your own videos are processed")
+)
 
 // prepare handles retries and reconciles the record with files on disk and
 // the asset on the server before any step runs.
@@ -249,9 +259,6 @@ func (p *Processor) prepare(ctx context.Context, rec *manifest.Record, asset *im
 	}
 	if asset.IsTrashed && !rec.State.Remote() && rec.State != manifest.Trashed {
 		return fmt.Errorf("original is in the trash; not processing")
-	}
-	if asset.OwnerId.String() != p.UserID {
-		return fmt.Errorf("asset belongs to another user")
 	}
 	return p.rewindIfFilesMissing(ctx, rec)
 }

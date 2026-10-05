@@ -80,28 +80,62 @@ func waitForServer(t *testing.T, base string) {
 	t.Fatalf("Immich at %s did not become ready; start it with docker compose -f test/integration/docker-compose.yml up -d", base)
 }
 
-// apiKey signs up the admin (first run) or logs in, and creates a key with
-// all permissions.
-func apiKey(t *testing.T, base string) string {
+// adminKey signs up the admin (first run) or logs in, and returns an API key
+// with all permissions and the admin's user id.
+func adminKey(t *testing.T, base string) (key, userID string) {
 	anon := &rawAPI{t: t, base: base}
-	creds := map[string]string{"email": "admin@example.test", "password": "integration-test", "name": "Admin"}
-	anon.do("POST", "/auth/admin-sign-up", creds, nil) // 400 if it already exists
-	var login struct{ AccessToken string }
-	if code := anon.do("POST", "/auth/login", creds, &login); code != 201 {
-		t.Fatalf("login failed: %d", code)
+	anon.do("POST", "/auth/admin-sign-up", map[string]string{
+		"email": "admin@example.test", "password": "integration-test", "name": "Admin"}, nil) // 400 if it exists
+	return userKey(t, base, "admin@example.test", "integration-test")
+}
+
+// userKey logs in and creates an API key with all permissions.
+func userKey(t *testing.T, base, email, password string) (key, userID string) {
+	anon := &rawAPI{t: t, base: base}
+	var login struct{ AccessToken, UserID string }
+	if code := anon.do("POST", "/auth/login", map[string]string{"email": email, "password": password}, &login); code != 201 {
+		t.Fatalf("login %s failed: %d", email, code)
 	}
 	user := &rawAPI{t: t, base: base, header: http.Header{"Authorization": {"Bearer " + login.AccessToken}}}
-	var key struct{ Secret string }
-	if code := user.do("POST", "/api-keys", map[string]any{"name": "integration " + time.Now().Format(time.RFC3339Nano), "permissions": []string{"all"}}, &key); code != 201 {
-		t.Fatalf("create api key: %d", code)
+	var k struct{ Secret string }
+	if code := user.do("POST", "/api-keys", map[string]any{"name": "integration " + time.Now().Format(time.RFC3339Nano), "permissions": []string{"all"}}, &k); code != 201 {
+		t.Fatalf("create api key for %s: %d", email, code)
 	}
-	return key.Secret
+	return k.Secret, login.UserID
+}
+
+// tool runs the immich-transcode binary with its own config, manifest and
+// backup directory.
+type tool struct {
+	t       *testing.T
+	bin     string
+	cfgPath string
+	backup  string
+	key     string
+}
+
+func newTool(t *testing.T, base, key, work string) *tool {
+	tl := &tool{t: t, bin: buildBinary(t), cfgPath: filepath.Join(work, "config.yaml"),
+		backup: filepath.Join(work, "backup"), key: key}
+	os.WriteFile(tl.cfgPath, []byte(fmt.Sprintf("server_url: %s\nbackup_dir: %s\nwork_dir: %s\npreset: ultrafast\nmin_size: 1MB\nmetadata_timeout: 2m\n",
+		base, tl.backup, filepath.Join(work, "tmp"))), 0o644)
+	return tl
+}
+
+// run executes the tool and returns its combined output and exit error.
+func (tl *tool) run(args ...string) (string, error) {
+	tl.t.Helper()
+	cmd := exec.Command(tl.bin, append([]string{"--config", tl.cfgPath}, args...)...)
+	cmd.Env = append(os.Environ(), "IMMICH_API_KEY="+tl.key)
+	out, err := cmd.CombinedOutput()
+	tl.t.Logf("$ immich-transcode %s\n%s", strings.Join(args, " "), out)
+	return string(out), err
 }
 
 func TestEndToEnd(t *testing.T) {
 	base := serverURL()
 	waitForServer(t, base)
-	key := apiKey(t, base)
+	key, _ := adminKey(t, base)
 	api := &rawAPI{t: t, base: base, header: http.Header{"X-Api-Key": {key}}}
 	client, err := immich.New(base, key)
 	if err != nil {
@@ -166,21 +200,16 @@ func TestEndToEnd(t *testing.T) {
 
 	before, _ := client.GetAsset(ctx, ids["portrait"])
 
-	bin := buildBinary(t)
-	cfgPath := filepath.Join(work, "config.yaml")
-	backup := filepath.Join(work, "backup")
-	os.WriteFile(cfgPath, []byte(fmt.Sprintf("server_url: %s\nbackup_dir: %s\nwork_dir: %s\npreset: ultrafast\nmin_size: 1MB\nmetadata_timeout: 2m\n",
-		base, backup, filepath.Join(work, "tmp"))), 0o644)
+	tl := newTool(t, base, key, work)
 	cli := func(args ...string) string {
-		cmd := exec.Command(bin, append([]string{"--config", cfgPath}, args...)...)
-		cmd.Env = append(os.Environ(), "IMMICH_API_KEY="+key)
-		out, err := cmd.CombinedOutput()
-		t.Logf("$ immich-transcode %s\n%s", strings.Join(args, " "), out)
-		if err != nil && !strings.Contains(string(out), "had errors") {
+		out, err := tl.run(args...)
+		// Expected: some fixtures end failed/skipped, which exits non-zero.
+		if err != nil && !strings.Contains(out, "had errors") {
 			t.Fatalf("immich-transcode %v: %v", args, err)
 		}
-		return string(out)
+		return out
 	}
+	backup := tl.backup
 
 	scan := cli("scan", "--limit", "0")
 	for _, name := range []string{"portrait", "fullrange", "people"} {
@@ -315,5 +344,133 @@ func copyFile(t *testing.T, from, to string) {
 	}
 	if err := os.WriteFile(to, b, 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestPartnerVideosUntouched checks that videos owned by a partner, which
+// Immich's search returns when the partner is shown in the timeline, are
+// never listed, recorded, downloaded or changed.
+func TestPartnerVideosUntouched(t *testing.T) {
+	base := serverURL()
+	waitForServer(t, base)
+	ctx := context.Background()
+	work := t.TempDir()
+	adminK, adminID := adminKey(t, base)
+	admin := &rawAPI{t: t, base: base, header: http.Header{"X-Api-Key": {adminK}}}
+
+	// A fresh partner user each run, so reruns never see duplicates.
+	email := fmt.Sprintf("partner-%d@example.test", time.Now().UnixNano())
+	if code := admin.do("POST", "/admin/users", map[string]any{"email": email, "password": "partner-pass", "name": "Partner"}, nil); code != 201 {
+		t.Fatalf("create partner user: %d", code)
+	}
+	partnerK, partnerID := userKey(t, base, email, "partner-pass")
+	partner := &rawAPI{t: t, base: base, header: http.Header{"X-Api-Key": {partnerK}}}
+	partnerClient, err := immich.New(base, partnerK)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The partner owns a large, inefficient video: a prime candidate.
+	// Unique name so the "no copy appeared" check below ignores other runs.
+	clipName := fmt.Sprintf("PARTNER_CLIP_%d", time.Now().UnixNano())
+	clip := filepath.Join(work, clipName+".mp4")
+	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-y",
+		"-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30,noise=alls=40:allf=t", "-t", "3",
+		"-c:v", "libx264", "-preset", "ultrafast", "-crf", "8", "-pix_fmt", "yuv420p", clip).CombinedOutput(); err != nil {
+		t.Fatalf("ffmpeg: %v %s", err, out)
+	}
+	fi, _ := os.Stat(clip)
+	hexSum, b64Sum, _ := immich.FileSHA1(clip)
+	res, err := partnerClient.Upload(ctx, immich.UploadRequest{Path: clip, FileName: filepath.Base(clip),
+		FileCreatedAt: fi.ModTime(), FileModifiedAt: fi.ModTime(), SHA1Hex: hexSum}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	partnerAsset := res.ID
+	waitMetadata(t, partnerClient, partnerAsset, "partner clip")
+
+	// Partner shares with the admin; the admin shows them in the timeline.
+	if code := partner.do("POST", "/partners", map[string]any{"sharedWithId": adminID}, nil); code != 201 {
+		t.Fatalf("create partner share: %d", code)
+	}
+	if code := admin.do("PUT", "/partners/"+partnerID, map[string]any{"inTimeline": true}, nil); code != 200 {
+		t.Fatalf("show partner in timeline: %d", code)
+	}
+
+	// Precondition: the admin's search really does return the partner's
+	// video. Without this the rest of the test would prove nothing.
+	adminClient, err := immich.New(base, adminK)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := false
+	if err := adminClient.SearchVideos(ctx, 1_000_000, func(page []immich.Asset) error {
+		for _, a := range page {
+			seen = seen || a.Id.String() == partnerAsset
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !seen {
+		t.Fatal("precondition failed: the admin's search does not return the partner's video")
+	}
+
+	tl := newTool(t, base, adminK, work)
+
+	scan, err := tl.run("scan", "--limit", "0")
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if strings.Contains(scan, partnerAsset) {
+		t.Error("scan listed the partner's video")
+	}
+	if !strings.Contains(scan, "partner asset (not owned)") {
+		t.Error("scan did not report excluding partner assets")
+	}
+
+	// Asking for it explicitly must be refused before anything happens.
+	out, err := tl.run("run", "--apply", "--asset", partnerAsset)
+	if err == nil {
+		t.Error("run --asset on a partner video exited 0")
+	}
+	if !strings.Contains(out, "belongs to another user") {
+		t.Error("run did not explain the refusal")
+	}
+
+	// Nothing changed on the server or locally.
+	a, err := partnerClient.GetAsset(ctx, partnerAsset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.IsTrashed || a.Checksum != b64Sum {
+		t.Errorf("partner video changed: trashed=%v checksum %s (was %s)", a.IsTrashed, a.Checksum, b64Sum)
+	}
+	store, err := manifest.Open(filepath.Join(tl.backup, "manifest.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, ok, _ := store.Get(ctx, partnerAsset); ok {
+		t.Error("partner video recorded in the manifest")
+	}
+	filepath.WalkDir(tl.backup, func(path string, d os.DirEntry, _ error) error {
+		if d != nil && !d.IsDir() && strings.Contains(d.Name(), partnerAsset) {
+			t.Errorf("partner video downloaded to %s", path)
+		}
+		return nil
+	})
+	// And no copy of it appeared in the admin's own library.
+	var dup struct {
+		Assets struct {
+			Items []struct{ ID, OwnerID string }
+		}
+	}
+	admin.do("POST", "/search/metadata", map[string]any{"filter": map[string]any{
+		"originalFileName": map[string]any{"like": clipName + "%"}}}, &dup)
+	for _, d := range dup.Assets.Items {
+		if d.OwnerID == adminID {
+			t.Errorf("admin now owns a copy of the partner video: %s", d.ID)
+		}
 	}
 }

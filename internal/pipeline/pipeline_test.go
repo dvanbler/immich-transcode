@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -618,5 +619,28 @@ func TestDiffAndFormat(t *testing.T) {
 	newA.ExifInfo.Latitude = &lat
 	if m := TimelineMismatch(oldA, newA); m != "" {
 		t.Error(m)
+	}
+}
+
+func TestOtherUsersAssetUntouched(t *testing.T) {
+	e := setup(t)
+	e.proc.Opts.Apply = true
+	id := e.fake.add(e.set.Portrait.Path)
+	e.fake.assets[id].OwnerId = uuid.New() // a partner's video
+	o := e.proc.Process(context.Background(), id)
+	if !errors.Is(o.Err, errNotOwner) {
+		t.Fatalf("outcome %+v", o)
+	}
+	if _, ok, _ := e.store.Get(context.Background(), id); ok {
+		t.Error("partner asset was recorded in the manifest")
+	}
+	if e.fake.uploads != 0 || e.fake.assets[id].IsTrashed {
+		t.Error("partner asset touched")
+	}
+	entries, _ := os.ReadDir(e.proc.Cfg.BackupDir)
+	for _, de := range entries {
+		if !strings.HasPrefix(de.Name(), "manifest.db") {
+			t.Errorf("backup dir has %s", de.Name())
+		}
 	}
 }
