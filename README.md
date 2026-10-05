@@ -179,9 +179,27 @@ not changed, recorded in the manifest, downloaded or copied into your
 library.
 
 The Immich client is generated with oapi-codegen (`make generate`), limited to
-the operations listed in [`api/oapi-codegen.yaml`](api/oapi-codegen.yaml). To
-target a newer server, replace `api/immich-openapi-specs.json` with that
-version's spec and regenerate.
+the operations listed in [`api/oapi-codegen.yaml`](api/oapi-codegen.yaml).
+
+### The pinned API spec
+
+`api/immich-openapi-specs.json` is Immich's own spec
+(`open-api/immich-openapi-specs.json` in the immich repo), unmodified. Its
+source is pinned in [`api/spec.mk`](api/spec.mk) by release tag, commit hash
+and SHA-256:
+
+```sh
+make spec                                  # re-download the pinned spec and verify its checksum
+make spec-update IMMICH_VERSION=v3.3.0     # pin a newer release
+make generate && make test                 # then regenerate the client and test
+```
+
+`spec-update` resolves the tag to a commit, downloads the spec from that
+commit and records its checksum. It also updates `SpecVersion` in the code and
+the server image in the integration test's compose file. The Postgres and
+Valkey images there are not updated; compare them with that release's
+`docker-compose.yml`. A unit test fails if the spec file, `api/spec.mk`,
+`SpecVersion` and the test server image ever disagree.
 
 ## Not in v1
 

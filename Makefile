@@ -3,13 +3,25 @@ LDFLAGS := -s -w
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
 COMPOSE := docker compose -f test/integration/docker-compose.yml
 
-.PHONY: build test generate dist immich-up immich-down integration
+include api/spec.mk
+
+.PHONY: build test generate spec spec-update dist immich-up immich-down integration
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) .
 
 test:
 	go test ./...
+
+# Download the pinned spec ($(IMMICH_VERSION) @ $(IMMICH_COMMIT)) and verify
+# its SHA-256 against api/spec.mk.
+spec:
+	scripts/spec.sh fetch
+
+# Pin a new Immich release: make spec-update IMMICH_VERSION=v3.3.0
+# Updates api/spec.mk, the spec, SpecVersion and the integration server image.
+spec-update:
+	scripts/spec.sh update $(IMMICH_VERSION)
 
 # Regenerate the Immich client from api/immich-openapi-specs.json.
 generate:
