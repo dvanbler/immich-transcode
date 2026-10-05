@@ -123,7 +123,9 @@ func (c *Config) Finalize() error {
 		return errors.New("backup_dir is required (set it in the config file or with --backup-dir)")
 	}
 	if c.WorkDir == "" {
-		c.WorkDir = filepath.Join(os.TempDir(), "immich-transcode")
+		// Not under /tmp: validated encodes must survive a reboot so a dry
+		// run's work is not redone before --apply.
+		c.WorkDir = filepath.Join(c.BackupDir, "work")
 	}
 	if c.ManifestPath == "" {
 		// Kept with the backups: both must outlive the work directory.

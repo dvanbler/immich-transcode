@@ -220,6 +220,17 @@ func TestEndToEnd(t *testing.T) {
 
 	// Dry run: nothing changes on the server.
 	cli("run", "--asset", ids["portrait"])
+	// A second dry run has nothing left to do for it.
+	if again := cli("run", "--asset", ids["portrait"]); !strings.Contains(again, "already validated") {
+		t.Error("repeated dry run did not skip the validated asset")
+	}
+	// Consecutive limited dry runs work through new candidates.
+	batch1 := cli("run", "--limit", "1")
+	batch2 := cli("run", "--limit", "1")
+	full := filepath.Base(set.FullRange.Path) // largest estimated saving
+	if !strings.Contains(batch1, full+":") || strings.Contains(batch2, full+":") {
+		t.Error("second --limit 1 dry run did not move past the first batch")
+	}
 	if a, _ := client.GetAsset(ctx, ids["portrait"]); a.IsTrashed {
 		t.Fatal("dry run trashed the original")
 	}

@@ -56,8 +56,15 @@ Every setting in the config file can also be set by a flag (`--server`,
 for the full list.
 
 A dry run does all the local work: it downloads the backup, encodes the video
-and runs every validation. A later `--apply` run continues from the validated
-encode instead of encoding again.
+and runs every validation. The encode is kept in `work_dir` (default
+`<backup_dir>/work`, so it survives a reboot). A later `--apply` run uploads
+that encode instead of encoding again.
+
+Repeating a dry run doesn't redo anything. Assets already validated are
+skipped and don't count toward `--limit`, so `run --limit 5` run twice covers
+ten different videos. An existing encode keeps its CRF even if the config's
+`crf` changes. Passing `--crf` explicitly re-encodes it from the backup at the
+new value. The output shows the CRF of each result.
 
 ### Ctrl-C
 

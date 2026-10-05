@@ -10,8 +10,10 @@ server_url: http://immich.local:2283
 # by the tool. The manifest and log also live here unless set below.
 backup_dir: /mnt/archive/immich-originals
 
-# Temporary encodes. Needs free space for the largest output being made.
-work_dir: /var/tmp/immich-transcode
+# Encodes awaiting upload. Default <backup_dir>/work. Keep it on a disk that
+# survives reboots, or validated dry-run encodes have to be redone. Each
+# encode is deleted once its asset is done.
+# work_dir: /mnt/archive/immich-originals/work
 
 # manifest: /mnt/archive/immich-originals/manifest.db
 # log_file: /mnt/archive/immich-originals/immich-transcode.log

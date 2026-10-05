@@ -46,7 +46,7 @@ func TestLoad(t *testing.T) {
 	if c.BPP.H264 != 0.2 || c.BPP.HEVC != 0.12 {
 		t.Errorf("bpp merge: %+v", c.BPP)
 	}
-	if c.ManifestPath != "/mnt/backup/manifest.db" || c.Preset != "slow" || c.MinSavingsPercent != 25 {
+	if c.ManifestPath != "/mnt/backup/manifest.db" || c.WorkDir != "/mnt/backup/work" || c.Preset != "slow" || c.MinSavingsPercent != 25 {
 		t.Errorf("defaults: %+v", c)
 	}
 

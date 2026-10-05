@@ -44,6 +44,7 @@ type fakeImmich struct {
 	failCopy      bool
 	shiftLocation bool // simulate the server reading a different location
 	uploads       int
+	downloads     int
 }
 
 func newFake(t *testing.T, tools media.Tools) *fakeImmich {
@@ -134,6 +135,9 @@ func (f *fakeImmich) GetAsset(_ context.Context, id string) (*immich.Asset, erro
 }
 
 func (f *fakeImmich) Download(_ context.Context, id string, w io.Writer, progress func(int64)) (string, int64, error) {
+	f.mu.Lock()
+	f.downloads++
+	f.mu.Unlock()
 	b, err := os.ReadFile(f.files[id])
 	if err != nil {
 		return "", 0, err
@@ -642,5 +646,78 @@ func TestOtherUsersAssetUntouched(t *testing.T) {
 		if !strings.HasPrefix(de.Name(), "manifest.db") {
 			t.Errorf("backup dir has %s", de.Name())
 		}
+	}
+}
+
+func TestRepeatedDryRunReusesWork(t *testing.T) {
+	e := setup(t)
+	id := e.fake.add(e.set.Portrait.Path)
+	ctx := context.Background()
+	modTime := func() time.Time {
+		fi, err := os.Stat(e.state(id).OutputPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fi.ModTime()
+	}
+
+	e.proc.Process(ctx, id) // crf 28 from setup
+	first := modTime()
+
+	// Same options again: nothing to do.
+	if e.proc.Opts.HasWork(e.state(id)) {
+		t.Error("HasWork true for a validated asset in a dry run")
+	}
+	e.proc.Process(ctx, id)
+	if !modTime().Equal(first) || e.fake.downloads != 1 {
+		t.Fatalf("second dry run redid work: downloads %d", e.fake.downloads)
+	}
+
+	// A different CRF from config (not --crf) keeps the existing encode.
+	e.proc.Opts.CRF = 18
+	e.proc.Process(ctx, id)
+	if r := e.state(id); r.CRF != 28 || !modTime().Equal(first) {
+		t.Fatalf("implicit crf change re-encoded: crf %d", r.CRF)
+	}
+
+	// An explicit --crf re-encodes from the backup without re-downloading.
+	e.proc.Opts.CRFExplicit = true
+	if !e.proc.Opts.HasWork(e.state(id)) {
+		t.Error("HasWork false although --crf differs")
+	}
+	o := e.proc.Process(ctx, id)
+	r := e.state(id)
+	if o.State != manifest.Validated || r.CRF != 18 || modTime().Equal(first) || e.fake.downloads != 1 {
+		t.Fatalf("explicit crf: state %s crf %d downloads %d", o.State, r.CRF, e.fake.downloads)
+	}
+	if r.NewSize <= 0 {
+		t.Error("new size not updated")
+	}
+}
+
+func TestHasWork(t *testing.T) {
+	rec := func(s manifest.State, crf int) manifest.Record { return manifest.Record{State: s, CRF: crf} }
+	cases := []struct {
+		name string
+		opts Options
+		rec  manifest.Record
+		want bool
+	}{
+		{"dry, validated", Options{CRF: 26}, rec(manifest.Validated, 26), false},
+		{"dry, validated, config crf differs", Options{CRF: 20}, rec(manifest.Validated, 26), false},
+		{"dry, validated, --crf differs", Options{CRF: 20, CRFExplicit: true}, rec(manifest.Validated, 26), true},
+		{"dry, validated, --crf same", Options{CRF: 26, CRFExplicit: true}, rec(manifest.Validated, 26), false},
+		{"apply, validated", Options{Apply: true, CRF: 26}, rec(manifest.Validated, 26), true},
+		{"dry, probed", Options{CRF: 26}, rec(manifest.Probed, 0), true},
+		{"dry, transcoded", Options{CRF: 26}, rec(manifest.Transcoded, 26), true},
+	}
+	for _, c := range cases {
+		if got := c.opts.HasWork(c.rec); got != c.want {
+			t.Errorf("%s: HasWork = %v, want %v", c.name, got, c.want)
+		}
+	}
+	// Uploaded assets are never re-encoded, whatever --crf says.
+	if (Options{CRF: 18, CRFExplicit: true}).Reencodes(rec(manifest.Uploaded, 26)) {
+		t.Error("Reencodes true for an uploaded asset")
 	}
 }

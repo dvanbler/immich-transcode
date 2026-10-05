@@ -19,6 +19,7 @@ type runFlags struct {
 	assets        []string
 	minSize       config.Size
 	crf           int
+	crfExplicit   bool
 }
 
 func (a *app) runCmd() *cobra.Command {
@@ -36,7 +37,8 @@ from the validated encode.`,
 			if !cmd.Flags().Changed("min-size") {
 				f.minSize = a.cfg.MinSize
 			}
-			if !cmd.Flags().Changed("crf") {
+			f.crfExplicit = cmd.Flags().Changed("crf")
+			if !f.crfExplicit {
 				f.crf = a.cfg.CRF
 			}
 			a.cfg.CRF = f.crf
@@ -71,7 +73,7 @@ from the validated encode.`,
 	fl.IntVar(&f.limit, "limit", 0, "process at most N assets (0 = no limit)")
 	fl.StringSliceVar(&f.assets, "asset", nil, "process only this asset id (repeatable)")
 	fl.Var(&f.minSize, "min-size", "only consider videos at least this large (e.g. 200MB; config min_size)")
-	fl.IntVar(&f.crf, "crf", 0, "x265 CRF (default from config, 26)")
+	fl.IntVar(&f.crf, "crf", 0, "x265 CRF (default from config, 26); also re-encodes existing local encodes made at another CRF")
 	fl.BoolVar(&f.allowFaceLoss, "allow-face-loss", false, "replace videos even if named people will lose their face assignments")
 	fl.BoolVar(&f.retryFailed, "retry-failed", false, "also retry assets that failed in an earlier run")
 	return cmd
@@ -131,9 +133,29 @@ func (a *app) process(f runFlags, pick func(context.Context, *session) ([]string
 	}
 	defer s.close()
 
-	ids, err := pick(ctx, s)
+	opts := pipeline.Options{Apply: f.apply, AllowFaceLoss: f.allowFaceLoss, RetryFailed: f.retryFailed,
+		CRF: s.cfg.CRF, CRFExplicit: f.crfExplicit}
+	picked, err := pick(ctx, s)
 	if err != nil {
 		return err
+	}
+	// Drop assets with nothing to do before applying --limit, so repeated
+	// dry runs move on to new candidates instead of revisiting validated ones.
+	var ids []string
+	idle := 0
+	for _, id := range picked {
+		rec, ok, err := s.store.Get(ctx, id)
+		if err != nil {
+			return err
+		}
+		if ok && !opts.HasWork(rec) {
+			idle++
+			continue
+		}
+		ids = append(ids, id)
+	}
+	if idle > 0 {
+		a.console.Printf("%d asset(s) already validated by an earlier dry run; skipped (use --apply to finish them, or --crf to re-encode)", idle)
 	}
 	if f.limit > 0 && len(ids) > f.limit {
 		ids = ids[:f.limit]
@@ -150,7 +172,7 @@ func (a *app) process(f runFlags, pick func(context.Context, *session) ([]string
 
 	proc = &pipeline.Processor{
 		Cfg:     s.cfg,
-		Opts:    pipeline.Options{Apply: f.apply, AllowFaceLoss: f.allowFaceLoss, RetryFailed: f.retryFailed, CRF: s.cfg.CRF},
+		Opts:    opts,
 		Immich:  s.client,
 		Tools:   s.tools,
 		Store:   s.store,

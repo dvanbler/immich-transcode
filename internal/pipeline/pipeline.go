@@ -41,6 +41,31 @@ type Options struct {
 	AllowFaceLoss bool
 	RetryFailed   bool
 	CRF           int
+	// CRFExplicit means CRF came from --crf rather than config: an existing
+	// local encode at a different CRF is then redone. Otherwise the existing
+	// encode is kept, so a later run cannot silently change its quality.
+	CRFExplicit bool
+}
+
+// Reencodes reports whether rec has a local encode (not yet uploaded) that
+// these options would replace because --crf asks for a different value.
+func (o Options) Reencodes(rec manifest.Record) bool {
+	return o.CRFExplicit && rec.CRF != o.CRF && hasLocalEncode(rec.State)
+}
+
+// HasWork reports whether processing rec with these options would do
+// anything: a dry run has nothing left to do for a validated asset unless it
+// is to be re-encoded.
+func (o Options) HasWork(rec manifest.Record) bool {
+	if rec.State == manifest.Validated && !o.Apply {
+		return o.Reencodes(rec)
+	}
+	return true
+}
+
+// hasLocalEncode is true from Transcoded up to (not including) Uploaded.
+func hasLocalEncode(s manifest.State) bool {
+	return atOrAfter(s, manifest.Transcoded) && !atOrAfter(s, manifest.Uploaded)
 }
 
 // Processor runs assets through the pipeline.
@@ -213,11 +238,11 @@ func (p *Processor) finish(out Outcome, rec manifest.Record) Outcome {
 	out.State = rec.State
 	switch {
 	case out.State == manifest.Done:
-		p.Console.Printf("%s: %s → %s (%.1f%% saved) done", out.FileName,
-			config.HumanBytes(out.OldSize), config.HumanBytes(out.NewSize), pct(out.OldSize, out.NewSize))
+		p.Console.Printf("%s: %s → %s (%.1f%% saved, crf %d) done", out.FileName,
+			config.HumanBytes(out.OldSize), config.HumanBytes(out.NewSize), pct(out.OldSize, out.NewSize), rec.CRF)
 	case out.State == manifest.Validated && !p.Opts.Apply && !out.Interrupted:
-		p.Console.Printf("%s: %s → %s (%.1f%% saved) validated; dry run, not uploaded (use --apply)", out.FileName,
-			config.HumanBytes(out.OldSize), config.HumanBytes(out.NewSize), pct(out.OldSize, out.NewSize))
+		p.Console.Printf("%s: %s → %s (%.1f%% saved, crf %d) validated; dry run, not uploaded (use --apply)", out.FileName,
+			config.HumanBytes(out.OldSize), config.HumanBytes(out.NewSize), pct(out.OldSize, out.NewSize), rec.CRF)
 	case out.Interrupted:
 		p.Console.Printf("%s: stopped at %s; run `resume` to continue", out.FileName, out.State)
 	}
@@ -260,25 +285,33 @@ func (p *Processor) prepare(ctx context.Context, rec *manifest.Record, asset *im
 	if asset.IsTrashed && !rec.State.Remote() && rec.State != manifest.Trashed {
 		return fmt.Errorf("original is in the trash; not processing")
 	}
-	return p.rewindIfFilesMissing(ctx, rec)
+	return p.reconcileLocal(ctx, rec)
 }
 
-// rewindIfFilesMissing moves a local-only record back to the last state
-// whose files still exist (e.g. the work directory was cleared).
-func (p *Processor) rewindIfFilesMissing(ctx context.Context, rec *manifest.Record) error {
+// reconcileLocal moves a not-yet-uploaded record back to an earlier step
+// when its files are gone (e.g. the work directory was cleared) or when
+// --crf asks for a different encode. The backup is reused, never re-fetched
+// unless it is missing.
+func (p *Processor) reconcileLocal(ctx context.Context, rec *manifest.Record) error {
 	if rec.State.Remote() || rec.State == manifest.Trashed || rec.State == manifest.Pending {
 		return nil
 	}
-	target := rec.State
-	if rec.BackupPath == "" || !exists(rec.BackupPath) {
-		target = manifest.Pending
-	} else if atOrAfter(rec.State, manifest.Transcoded) && (rec.OutputPath == "" || !exists(rec.OutputPath)) {
-		target = manifest.Probed
+	target, why := rec.State, ""
+	switch {
+	case rec.BackupPath == "" || !exists(rec.BackupPath):
+		target, why = manifest.Pending, "rewind: backup missing"
+	case hasLocalEncode(rec.State) && (rec.OutputPath == "" || !exists(rec.OutputPath)):
+		target, why = manifest.Probed, "rewind: work file missing"
+	case p.Opts.Reencodes(*rec):
+		target, why = manifest.Probed, fmt.Sprintf("rewind: re-encode at crf %d (was %d)", p.Opts.CRF, rec.CRF)
+		p.Console.Printf("%s: re-encoding at crf %d (existing encode is crf %d)", rec.FileName, p.Opts.CRF, rec.CRF)
+	case hasLocalEncode(rec.State) && rec.CRF != p.Opts.CRF:
+		p.Console.Printf("%s: keeping existing crf %d encode (pass --crf %d to re-encode)", rec.FileName, rec.CRF, p.Opts.CRF)
 	}
 	if target == rec.State {
 		return nil
 	}
-	return p.Store.Transition(ctx, rec, target, "rewind: work file missing")
+	return p.Store.Transition(ctx, rec, target, why)
 }
 
 // step runs the action for rec's current state and returns the next state.
