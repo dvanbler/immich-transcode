@@ -200,6 +200,21 @@ func TestEndToEnd(t *testing.T) {
 
 	before, _ := client.GetAsset(ctx, ids["portrait"])
 
+	// The full-range clip's date is corrected in Immich, as for an old video
+	// whose file date is wrong: the file says 2022, the timeline 2006. Immich
+	// applies the change in the background, so wait for it to show.
+	editedLocal := time.Date(2006, 8, 3, 21, 21, 0, 0, time.UTC)
+	api.do("PUT", "/assets/"+ids["fullrange"], map[string]any{"dateTimeOriginal": "2006-08-03T21:21:00.000-04:00"}, nil)
+	for deadline := time.Now().Add(time.Minute); ; time.Sleep(500 * time.Millisecond) {
+		a, _ := client.GetAsset(ctx, ids["fullrange"])
+		if a != nil && a.LocalDateTime.Equal(editedLocal) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Immich did not apply the edited date to the original (localDateTime %v)", a.LocalDateTime)
+		}
+	}
+
 	tl := newTool(t, base, key, work)
 	cli := func(args ...string) string {
 		out, err := tl.run(args...)
@@ -315,6 +330,16 @@ func TestEndToEnd(t *testing.T) {
 		}
 		if fi, err := os.Stat(r.BackupPath); err != nil || fi.Size() != r.OriginalSize {
 			t.Errorf("backup %s missing or wrong size", r.BackupPath)
+		}
+	}
+	// The edited date carries over to the replacement.
+	if r := recs["fullrange"]; r.State == manifest.Done {
+		newA, err := client.GetAsset(ctx, r.NewAssetID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !newA.LocalDateTime.Equal(editedLocal) {
+			t.Errorf("full-range replacement localDateTime %v, want edited %v", newA.LocalDateTime, editedLocal)
 		}
 	}
 	for _, name := range []string{"hdr", "corrupt", "people"} {

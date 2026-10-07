@@ -215,6 +215,23 @@ func (f *fakeImmich) UpdateAsset(_ context.Context, id string, dto api.UpdateAss
 	defer f.mu.Unlock()
 	f.updates = append(f.updates, dto)
 	a := f.assets[id]
+	if dto.DateTimeOriginal != nil {
+		// Like Immich: the date is stored now, but localDateTime is only
+		// recomputed by a background re-extraction.
+		t, err := time.Parse("2006-01-02T15:04:05.000-07:00", *dto.DateTimeOriginal)
+		if err != nil {
+			return err
+		}
+		utc := t.UTC()
+		a.ExifInfo.DateTimeOriginal = &utc
+		local := time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), 0, time.UTC)
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+			f.mu.Lock()
+			a.LocalDateTime = local
+			f.mu.Unlock()
+		}()
+	}
 	if dto.Description != nil {
 		a.ExifInfo.Description = dto.Description
 	}
@@ -324,15 +341,16 @@ func setup(t *testing.T) *env {
 	t.Cleanup(func() { store.Close() })
 	fake := newFake(t, tools)
 	proc := &Processor{
-		Cfg:          cfg,
-		Opts:         Options{CRF: 28},
-		Immich:       fake,
-		Tools:        tools,
-		Store:        store,
-		Log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Console:      logging.NewConsole(),
-		UserID:       userID,
-		PollInterval: 10 * time.Millisecond,
+		Cfg:           cfg,
+		Opts:          Options{CRF: 28},
+		Immich:        fake,
+		Tools:         tools,
+		Store:         store,
+		Log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Console:       logging.NewConsole(),
+		UserID:        userID,
+		PollInterval:  10 * time.Millisecond,
+		SettleTimeout: 500 * time.Millisecond,
 	}
 	return &env{t: t, fake: fake, store: store, proc: proc, set: fixtures}
 }
@@ -729,5 +747,27 @@ func TestPixelVFRClipIsNotCorrupt(t *testing.T) {
 	o := e.proc.Process(context.Background(), id)
 	if o.State != manifest.Done {
 		t.Fatalf("outcome %+v (detail %q)", o, e.state(id).Detail)
+	}
+}
+
+// TestDateEditedInImmichSurvives covers a video whose date was corrected in
+// Immich: the file says 2017 but the timeline shows 2006. The patch must
+// restore 2006, and verification must wait for Immich to apply it.
+func TestDateEditedInImmichSurvives(t *testing.T) {
+	e := setup(t)
+	e.proc.Opts.Apply = true
+	id := e.fake.add(e.set.Portrait.Path)
+	orig := e.fake.assets[id]
+	instant := time.Date(2006, 8, 4, 1, 21, 0, 0, time.UTC)
+	orig.ExifInfo.DateTimeOriginal = &instant
+	orig.LocalDateTime = time.Date(2006, 8, 3, 21, 21, 0, 0, time.UTC) // UTC-4 wall time
+
+	o := e.proc.Process(context.Background(), id)
+	if o.State != manifest.Done {
+		t.Fatalf("outcome %+v", o)
+	}
+	newA := e.fake.assets[e.state(id).NewAssetID]
+	if !newA.LocalDateTime.Equal(orig.LocalDateTime) {
+		t.Errorf("localDateTime %v, want %v", newA.LocalDateTime, orig.LocalDateTime)
 	}
 }

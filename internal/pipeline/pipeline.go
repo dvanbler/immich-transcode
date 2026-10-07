@@ -81,6 +81,9 @@ type Processor struct {
 
 	// PollInterval is how often a new asset is polled for metadata.
 	PollInterval time.Duration
+	// SettleTimeout bounds how long verification waits for a date or
+	// location patch to take effect (default 2 minutes).
+	SettleTimeout time.Duration
 
 	stopping atomic.Bool
 }

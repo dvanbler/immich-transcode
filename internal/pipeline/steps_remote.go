@@ -277,15 +277,46 @@ func (p *Processor) verifyTimeline(ctx context.Context, rec *manifest.Record) (m
 		return "", "", err
 	}
 	rctx, cancel := remoteCtx(ctx)
-	defer cancel()
 	oldA, err := p.Immich.GetAsset(rctx, rec.AssetID)
+	cancel()
 	if err != nil {
 		return "", "", err
 	}
-	if problem := TimelineMismatch(oldA, newA); problem != "" {
-		return "", "", fmt.Errorf("timeline check failed: %s", problem)
+	// A date or location patch is applied by Immich in the background (it
+	// re-extracts metadata to recompute localDateTime), so a mismatch right
+	// after patching is expected. Poll until it settles; fail only if it
+	// never does.
+	deadline := time.Now().Add(p.settleTimeout())
+	for {
+		problem := TimelineMismatch(oldA, newA)
+		if problem == "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			return "", "", fmt.Errorf("timeline check failed after waiting %s: %s", p.settleTimeout(), problem)
+		}
+		p.Console.Status(rec.FileName + ": waiting for Immich to apply the date/location patch")
+		select {
+		case <-ctx.Done():
+			return "", "", errInterrupted
+		case <-time.After(p.PollInterval):
+		}
+		rctx, cancel := remoteCtx(ctx)
+		newA, err = p.Immich.GetAsset(rctx, rec.NewAssetID)
+		cancel()
+		if err != nil {
+			return "", "", err
+		}
 	}
 	return manifest.Verified, "localDateTime " + oldA.LocalDateTime.Format("2006-01-02 15:04:05") + " and location match", nil
+}
+
+// settleTimeout bounds the wait for patched dates and locations to show up.
+func (p *Processor) settleTimeout() time.Duration {
+	if p.SettleTimeout > 0 {
+		return p.SettleTimeout
+	}
+	return 2 * time.Minute
 }
 
 // TimelineMismatch describes how newA differs from oldA in timeline date or
