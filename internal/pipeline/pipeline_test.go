@@ -761,13 +761,7 @@ func TestPixelVFRClipIsNotCorrupt(t *testing.T) {
 func TestValidationRejectsDuplicateTimestamps(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
-	out := filepath.Join(t.TempDir(), "old-way.mp4")
-	cmd := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-y", "-i", e.set.VFR.Path,
-		"-map", "0:v:0", "-map", "0:a?", "-c:v", "libx265", "-preset", "ultrafast", "-x265-params", "log-level=error",
-		"-c:a", "copy", "-fps_mode", "passthrough", "-map_metadata", "0", "-f", "mp4", out)
-	if b, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("ffmpeg: %v %s", err, b)
-	}
+	out := oldWayEncode(t, e.set.VFR.Path)
 	if n, _ := e.proc.Tools.DuplicateTimestamps(ctx, out); n == 0 {
 		t.Fatal("the old-style encode has no duplicate timestamps; this test checks nothing")
 	}
@@ -796,5 +790,62 @@ func TestDateEditedInImmichSurvives(t *testing.T) {
 	newA := e.fake.assets[e.state(id).NewAssetID]
 	if !newA.LocalDateTime.Equal(orig.LocalDateTime) {
 		t.Errorf("localDateTime %v, want %v", newA.LocalDateTime, orig.LocalDateTime)
+	}
+}
+
+// oldWayEncode encodes src as the tool did before keeping the source time
+// base, which leaves duplicate timestamps on the Pixel-like clip.
+func oldWayEncode(t *testing.T, src string) string {
+	t.Helper()
+	out := filepath.Join(t.TempDir(), "old-way.mp4")
+	cmd := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-y", "-i", src,
+		"-map", "0:v:0", "-map", "0:a?", "-c:v", "libx265", "-preset", "ultrafast", "-x265-params", "log-level=error",
+		"-c:a", "copy", "-fps_mode", "passthrough", "-map_metadata", "0", "-f", "mp4", out)
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("ffmpeg: %v %s", err, b)
+	}
+	return out
+}
+
+func TestVerifyReplacement(t *testing.T) {
+	e := setup(t)
+	e.proc.Opts.Apply = true
+	ctx := context.Background()
+	id := e.fake.add(e.set.VFR.Path)
+	if o := e.proc.Process(ctx, id); o.State != manifest.Done {
+		t.Fatalf("outcome %+v", o)
+	}
+	rec := e.state(id)
+	verify := func(r manifest.Record) (string, error) {
+		return VerifyReplacement(ctx, e.fake, e.proc.Tools, r, e.proc.Cfg.WorkDir, func(int64) {})
+	}
+
+	if problem, err := verify(rec); problem != "" || err != nil {
+		t.Fatalf("good replacement: problem %q err %v", problem, err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(e.proc.Cfg.WorkDir, "verify-*")); len(left) != 0 {
+		t.Errorf("downloads not cleaned up: %v", left)
+	}
+
+	// A replacement uploaded by the old code: duplicate timestamps.
+	bad := oldWayEncode(t, e.set.VFR.Path)
+	e.fake.files[rec.NewAssetID] = bad
+	fi, _ := os.Stat(bad)
+	r := rec
+	r.NewSize = fi.Size()
+	if problem, err := verify(r); err != nil || !strings.Contains(problem, "share a timestamp") {
+		t.Errorf("bad replacement: problem %q err %v", problem, err)
+	}
+
+	// The server holds different bytes than were uploaded.
+	if problem, err := verify(rec); err != nil || !strings.Contains(problem, "bytes were uploaded") {
+		t.Errorf("size mismatch: problem %q err %v", problem, err)
+	}
+
+	// A missing backup cannot be checked; that is not a verdict on the file.
+	r = rec
+	r.BackupPath = filepath.Join(t.TempDir(), "gone.mp4")
+	if problem, err := verify(r); err == nil || problem != "" {
+		t.Errorf("missing backup: problem %q err %v", problem, err)
 	}
 }

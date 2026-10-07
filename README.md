@@ -52,6 +52,7 @@ immich-transcode run --limit 3             # dry run: download, encode, validate
 immich-transcode status                    # manifest: state, savings, failures
 immich-transcode resume --apply            # replace exactly those validated videos in Immich
 immich-transcode reset --state skipped_corrupt   # re-check skipped assets
+immich-transcode verify                    # re-check done replacements as stored in Immich
 ```
 
 `run` searches Immich for candidates and picks the best by estimated
@@ -77,6 +78,16 @@ skipped and don't count toward `--limit`, so `run --limit 5` run twice covers
 ten different videos. An existing encode keeps its CRF even if the config's
 `crf` changes. Passing `--crf` explicitly re-encodes it from the backup at the
 new value. The output shows the CRF of each result.
+
+### Checking finished replacements
+
+`verify` downloads each `done` replacement from Immich and runs the
+pre-upload validation on it again, against your local backup of the
+original. That covers a clean decode, duration, displayed size and
+orientation, audio streams, frame count, duplicate timestamps, creation
+date and GPS. It's read-only towards Immich, and each download is deleted
+after checking. It lists any replacements with problems and exits non-zero
+if there are any. Use `--asset <id>` to check specific assets.
 
 ### Re-checking skipped assets
 

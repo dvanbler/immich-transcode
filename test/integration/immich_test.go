@@ -257,6 +257,11 @@ func TestEndToEnd(t *testing.T) {
 	cli(append([]string{"run", "--apply"}, assetArgs...)...)
 	status := cli("status", "--all")
 
+	// Re-check the uploaded replacements as stored in Immich.
+	if out, err := tl.run("verify"); err != nil || strings.Count(out, ": ok") != 2 {
+		t.Errorf("verify: err %v, want 2 ok", err)
+	}
+
 	store, err := manifest.Open(filepath.Join(backup, "manifest.db"))
 	if err != nil {
 		t.Fatal(err)
