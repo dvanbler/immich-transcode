@@ -44,7 +44,7 @@ func (t *Tools) Check(ctx context.Context) ([]ToolInfo, error) {
 			continue
 		}
 		*tool.path = resolved
-		out, err := exec.CommandContext(ctx, resolved, tool.args...).Output()
+		out, err := command(ctx, resolved, tool.args...).Output()
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s at %s failed to report a version: %w", tool.name, resolved, err))
 			continue
@@ -55,7 +55,7 @@ func (t *Tools) Check(ctx context.Context) ([]ToolInfo, error) {
 	if len(errs) > 0 {
 		return infos, errors.Join(errs...)
 	}
-	out, err := exec.CommandContext(ctx, t.FFmpeg, "-hide_banner", "-encoders").Output()
+	out, err := command(ctx, t.FFmpeg, "-hide_banner", "-encoders").Output()
 	if err != nil {
 		return infos, fmt.Errorf("list ffmpeg encoders: %w", err)
 	}
@@ -65,9 +65,18 @@ func (t *Tools) Check(ctx context.Context) ([]ToolInfo, error) {
 	return infos, nil
 }
 
+// command is exec.CommandContext for every external tool: the child is
+// detached from the terminal's Ctrl-C (see detach) and killed only when ctx
+// is cancelled.
+func command(ctx context.Context, name string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, name, args...)
+	detach(cmd)
+	return cmd
+}
+
 // runCapture runs a command and returns stdout, folding stderr into errors.
 func runCapture(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := command(ctx, name, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

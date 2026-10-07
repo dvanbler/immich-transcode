@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -24,7 +23,7 @@ import (
 // hundred frames, and the muxer reports "non monotonically increasing dts",
 // which is not a decoding problem.
 func (t Tools) DecodeCheck(ctx context.Context, path string) (problems string, err error) {
-	cmd := exec.CommandContext(ctx, t.FFmpeg, "-nostdin", "-hide_banner", "-v", "error",
+	cmd := command(ctx, t.FFmpeg, "-nostdin", "-hide_banner", "-v", "error",
 		"-i", path, "-map", "0:v:0", "-enc_time_base", "-1", "-f", "null", "-")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -140,7 +139,7 @@ type Progress struct {
 // Transcode runs ffmpeg with args, calling onProgress as it goes. Cancelling
 // ctx kills ffmpeg; the caller removes the partial output.
 func (t Tools) Transcode(ctx context.Context, args []string, onProgress func(Progress)) error {
-	cmd := exec.CommandContext(ctx, t.FFmpeg, args...)
+	cmd := command(ctx, t.FFmpeg, args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
