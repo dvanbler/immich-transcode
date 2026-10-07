@@ -1,5 +1,10 @@
 # immich-transcode
 
+> **Note:** this utility was written with an AI coding assistant rather than
+> by hand. It has been tested on a real Immich library with tens
+> of thousands of photos and videos, but review what it does before running
+> it with `--apply` on your own library, and keep the backups it makes.
+
 Finds large, inefficiently encoded videos in an Immich v3 library and replaces
 each with an HEVC (x265) re-encode. For every video it keeps a verified local
 backup of the original, and it preserves the timeline date, location, albums,
