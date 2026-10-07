@@ -721,3 +721,13 @@ func TestHasWork(t *testing.T) {
 		t.Error("Reencodes true for an uploaded asset")
 	}
 }
+
+func TestPixelVFRClipIsNotCorrupt(t *testing.T) {
+	e := setup(t)
+	e.proc.Opts.Apply = true
+	id := e.fake.add(e.set.VFR.Path)
+	o := e.proc.Process(context.Background(), id)
+	if o.State != manifest.Done {
+		t.Fatalf("outcome %+v (detail %q)", o, e.state(id).Detail)
+	}
+}

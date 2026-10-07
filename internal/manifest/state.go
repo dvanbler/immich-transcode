@@ -97,6 +97,11 @@ func CheckTransition(from, to State) error {
 	if to == Done && from == Trashed {
 		return nil
 	}
+	// Reset: a skipped or failed asset is re-evaluated from the start
+	// (e.g. after a check was fixed or thresholds changed).
+	if to == Pending && from.Terminal() && from != Done && from != NeedsConfirm {
+		return nil
+	}
 	// Retrying: a failed or needs_confirm asset resumes from a progress
 	// state recorded before the failure.
 	if (from == Failed || from == NeedsConfirm) && !to.Terminal() {

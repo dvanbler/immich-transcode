@@ -3,6 +3,7 @@ package testmedia
 import (
 	"context"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"immich-transcode/internal/media"
@@ -44,6 +45,15 @@ func TestGenerate(t *testing.T) {
 	}
 	if probs, err := tools.DecodeCheck(ctx, s.Corrupt.Path); err != nil || probs == "" {
 		t.Errorf("corrupt fixture decoded cleanly (err %v)", err)
+	}
+	// The VFR clip must trip a naive null-muxer check (or it tests
+	// nothing) and pass the real one.
+	naive, _ := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-i", s.VFR.Path, "-map", "0:v:0", "-f", "null", "-").CombinedOutput()
+	if !strings.Contains(string(naive), "non monotonically increasing dts") {
+		t.Errorf("VFR fixture does not reproduce the timestamp collision: %q", naive)
+	}
+	if probs, err := tools.DecodeCheck(ctx, s.VFR.Path); err != nil || probs != "" {
+		t.Errorf("VFR fixture reported as damaged: %s %v", probs, err)
 	}
 	if probs, _ := tools.DecodeCheck(ctx, s.Portrait.Path); probs != "" {
 		t.Errorf("portrait fixture has decode errors: %s", probs)

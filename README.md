@@ -47,6 +47,7 @@ immich-transcode run --limit 3             # dry run: download, encode, validate
 immich-transcode run --limit 3 --apply     # replace them in Immich
 immich-transcode status                    # manifest: state, savings, failures
 immich-transcode resume --apply            # continue anything left partway
+immich-transcode reset --state skipped_corrupt   # re-check skipped assets next run
 ```
 
 Every setting in the config file can also be set by a flag (`--server`,
@@ -65,6 +66,15 @@ skipped and don't count toward `--limit`, so `run --limit 5` run twice covers
 ten different videos. An existing encode keeps its CRF even if the config's
 `crf` changes. Passing `--crf` explicitly re-encodes it from the backup at the
 new value. The output shows the CRF of each result.
+
+### Re-checking skipped assets
+
+Skipped assets are never selected again. Use `reset` to send them back to
+`pending`, for example after changing the `bpp` thresholds or after a fix to a
+check. It changes only the manifest: the next run verifies the existing
+backup by checksum instead of downloading it, then re-runs every check.
+`reset` also accepts `failed` and specific `--asset` ids. Assets that are
+`done` can't be reset.
 
 ### Ctrl-C
 
@@ -88,7 +98,7 @@ failure stops that asset only.
 | State | Step |
 |---|---|
 | `downloaded` | Original streamed to `backup/YYYY/MM/<id>_<name>` and checked against Immich's SHA-1. An existing backup is reused if it matches; a mismatch is never overwritten. |
-| `decode_ok` | `ffmpeg -v error … -f null -` on the original. Any output → `skipped_corrupt`. |
+| `decode_ok` | `ffmpeg -v error … -enc_time_base -1 -f null -` decodes the original. Any output → `skipped_corrupt`. Keeping the source time base avoids false alarms on variable-frame-rate phone video. |
 | `probed` | ffprobe computes real bpp. AV1 → `skipped_codec`. H.264 < 0.15 or HEVC < 0.12 → `skipped_efficient`. 10-bit, Main10, PQ or HLG → `skipped_hdr`. |
 | `transcoded` | libx265 to `work_dir`, audio copied. Full-range sources (`yuvj*` or `color_range=pc`) keep full range. |
 | `metadata_copied` | `exiftool -TagsFromFile` copies the QuickTime, Keys and UserData groups. |

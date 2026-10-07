@@ -37,12 +37,15 @@ func TestTransitionRules(t *testing.T) {
 		{Failed, Validated, true},          // retry
 		{NeedsConfirm, Validated, true},    // --allow-face-loss
 		{Done, Pending, false},             // done is final
-		{SkippedHDR, Pending, false},       //
+		{SkippedHDR, Pending, true},        // reset
 		{Patched, Validated, true},         // rollback after remote failure
 		{Transcoded, Probed, true},         // rewind, work file lost
 		{Uploaded, Probed, false},          // no rewind once remote
 		{Trashed, Validated, false},        // original already trashed
 		{Verified, NeedsConfirm, true},     // faces named mid-run
+		{SkippedCorrupt, Pending, true},    // reset after a fixed check
+		{Failed, Pending, true},            // reset
+		{SkippedCorrupt, Probed, false},    // reset only to pending
 	}
 	for _, c := range cases {
 		err := CheckTransition(c.from, c.to)

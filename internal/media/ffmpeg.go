@@ -16,9 +16,16 @@ import (
 // DecodeCheck fully decodes the first video stream. Any message ffmpeg
 // prints at error level means the file is damaged; it is returned as the
 // error text.
+//
+// -enc_time_base -1 keeps the source time base through the null muxer. With
+// the default (1/guessed frame rate), phone video whose real frame interval
+// is slightly shorter than the guessed rate (e.g. Pixel: 3013/90000 s with
+// jitter, guessed 179/6 fps) has two frames rounded into one slot every few
+// hundred frames, and the muxer reports "non monotonically increasing dts",
+// which is not a decoding problem.
 func (t Tools) DecodeCheck(ctx context.Context, path string) (problems string, err error) {
 	cmd := exec.CommandContext(ctx, t.FFmpeg, "-nostdin", "-hide_banner", "-v", "error",
-		"-i", path, "-map", "0:v:0", "-f", "null", "-")
+		"-i", path, "-map", "0:v:0", "-enc_time_base", "-1", "-f", "null", "-")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	cmd.Stdout = io.Discard
