@@ -157,8 +157,26 @@ feed:
 // Process advances one asset as far as the options allow.
 func (p *Processor) Process(ctx context.Context, id string) Outcome {
 	out := Outcome{AssetID: id}
+	// The asset being replaced is the original, or during a redo the
+	// previous replacement.
+	source := id
+	if rec, ok, err := p.Store.Get(ctx, id); err != nil {
+		out.Err = err
+		return out
+	} else if ok {
+		source = rec.Source()
+	} else if orig, isRepl, err := p.isReplacement(ctx, id); err != nil {
+		out.Err = err
+		return out
+	} else if isRepl {
+		// Re-encoding a replacement would compress an already compressed
+		// video; redo works from the original's backup instead.
+		out.Err = fmt.Errorf("%s is a replacement made by immich-transcode for %s; use `redo --asset %s`", id, orig, orig)
+		p.Console.Printf("%v", out.Err)
+		return out
+	}
 	rctx, cancel := remoteCtx(ctx)
-	asset, err := p.Immich.GetAsset(rctx, id)
+	asset, err := p.Immich.GetAsset(rctx, source)
 	cancel()
 	if err != nil {
 		out.Err = err
@@ -291,6 +309,17 @@ func (p *Processor) prepare(ctx context.Context, rec *manifest.Record, asset *im
 	return p.reconcileLocal(ctx, rec)
 }
 
+// isReplacement reports whether id is an asset this tool uploaded, and the
+// original it stands in for.
+func (p *Processor) isReplacement(ctx context.Context, id string) (string, bool, error) {
+	repl, err := p.Store.Replacements(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	orig, ok := repl[id]
+	return orig, ok, nil
+}
+
 // reconcileLocal moves a not-yet-uploaded record back to an earlier step
 // when its files are gone (e.g. the work directory was cleared) or when
 // --crf asks for a different encode. The backup is reused, never re-fetched
@@ -300,8 +329,13 @@ func (p *Processor) reconcileLocal(ctx context.Context, rec *manifest.Record) er
 		return nil
 	}
 	target, why := rec.State, ""
+	backupMissing := rec.BackupPath == "" || !exists(rec.BackupPath)
+	if backupMissing && rec.SourceAssetID != "" {
+		// Downloading "the original" would fetch the previous replacement.
+		return fmt.Errorf("cannot redo: the backup of the original (%s) is missing", rec.BackupPath)
+	}
 	switch {
-	case rec.BackupPath == "" || !exists(rec.BackupPath):
+	case backupMissing:
 		target, why = manifest.Pending, "rewind: backup missing"
 	case hasLocalEncode(rec.State) && (rec.OutputPath == "" || !exists(rec.OutputPath)):
 		target, why = manifest.Probed, "rewind: work file missing"

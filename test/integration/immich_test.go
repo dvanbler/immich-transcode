@@ -347,6 +347,59 @@ func TestEndToEnd(t *testing.T) {
 			t.Errorf("full-range replacement localDateTime %v, want edited %v", newA.LocalDateTime, editedLocal)
 		}
 	}
+	// Redo the portrait: re-encode from the backup at another CRF and replace
+	// the current replacement, carrying everything over from it.
+	if r := recs["portrait"]; r.State == manifest.Done {
+		firstRepl := r.NewAssetID
+		cfg, _ := os.ReadFile(tl.cfgPath)
+		os.WriteFile(tl.cfgPath, append(cfg, []byte("crf: 30\n")...), 0o644)
+		if out, err := tl.run("redo", "--asset", ids["portrait"], "--apply"); err != nil {
+			t.Fatalf("redo: %v\n%s", err, out)
+		}
+		r2, _, _ := store.Get(ctx, ids["portrait"])
+		if r2.State != manifest.Done || r2.NewAssetID == firstRepl || r2.CRF != 30 {
+			t.Fatalf("after redo: state %s replacement %s (was %s) crf %d", r2.State, r2.NewAssetID, firstRepl, r2.CRF)
+		}
+		if old, _ := client.GetAsset(ctx, firstRepl); old == nil || !old.IsTrashed {
+			t.Error("previous replacement not in trash")
+		}
+		newA, err := client.GetAsset(ctx, r2.NewAssetID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch {
+		case !newA.LocalDateTime.Equal(before.LocalDateTime):
+			t.Errorf("redo localDateTime %v, want %v", newA.LocalDateTime, before.LocalDateTime)
+		case !newA.IsFavorite || newA.Visibility != "archive":
+			t.Errorf("redo favorite %v visibility %s", newA.IsFavorite, newA.Visibility)
+		case newA.ExifInfo.Description == nil || *newA.ExifInfo.Description != desc:
+			t.Errorf("redo description %v", newA.ExifInfo.Description)
+		case newA.ExifInfo.Rating == nil || *newA.ExifInfo.Rating != rating:
+			t.Errorf("redo rating %v", newA.ExifInfo.Rating)
+		case newA.Tags == nil || len(*newA.Tags) == 0:
+			t.Error("redo lost tags")
+		}
+		var inAlbum struct {
+			Assets struct{ Items []struct{ ID string } }
+		}
+		api.do("POST", "/search/metadata", map[string]any{"filter": map[string]any{"albumIds": map[string]any{"any": []string{album.ID}}}}, &inAlbum)
+		found := false
+		for _, a := range inAlbum.Assets.Items {
+			found = found || a.ID == r2.NewAssetID
+		}
+		if !found {
+			t.Error("redo replacement not in album")
+		}
+		if out, err := tl.run("verify", "--asset", ids["portrait"]); err != nil || !strings.Contains(out, ": ok") {
+			t.Errorf("verify after redo: %v", err)
+		}
+		// Replacements are never offered as new candidates.
+		scan2, _ := tl.run("scan", "--limit", "0")
+		if strings.Contains(scan2, r2.NewAssetID) || !strings.Contains(scan2, "replacement made by immich-transcode") {
+			t.Error("scan offered a replacement as a candidate")
+		}
+	}
+
 	for _, name := range []string{"hdr", "corrupt", "people"} {
 		if a, _ := client.GetAsset(ctx, ids[name]); a == nil || a.IsTrashed {
 			t.Errorf("%s original was trashed", name)

@@ -62,7 +62,7 @@ The API key is read from the ` + config.APIKeyEnv + ` environment variable.`,
 	f.StringVar(&a.preset, "preset", "", "x265 preset")
 	f.IntVar(&a.concurrency, "concurrency", 0, "number of assets transcoded at once")
 
-	root.AddCommand(a.scanCmd(), a.runCmd(), a.statusCmd(), a.resumeCmd(), a.resetCmd(), a.verifyCmd())
+	root.AddCommand(a.scanCmd(), a.runCmd(), a.statusCmd(), a.resumeCmd(), a.resetCmd(), a.verifyCmd(), a.redoCmd())
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1

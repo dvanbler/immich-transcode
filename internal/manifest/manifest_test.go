@@ -31,21 +31,22 @@ func TestTransitionRules(t *testing.T) {
 		{Pending, Transcoded, false},       // cannot skip steps
 		{Downloaded, SkippedCorrupt, true}, // outcome from a step
 		{Validated, Uploaded, true},        //
-		{Validated, Done, false},           // cannot finish without trashing
+		{Validated, Done, true},            // redo produced an identical encode
 		{Probed, Done, false},              //
 		{Copied, Failed, true},             //
 		{Failed, Validated, true},          // retry
 		{NeedsConfirm, Validated, true},    // --allow-face-loss
-		{Done, Pending, false},             // done is final
-		{SkippedHDR, Pending, true},        // reset
-		{Patched, Validated, true},         // rollback after remote failure
-		{Transcoded, Probed, true},         // rewind, work file lost
-		{Uploaded, Probed, false},          // no rewind once remote
-		{Trashed, Validated, false},        // original already trashed
-		{Verified, NeedsConfirm, true},     // faces named mid-run
-		{SkippedCorrupt, Pending, true},    // reset after a fixed check
-		{Failed, Pending, true},            // reset
-		{SkippedCorrupt, Probed, false},    // reset only to pending
+		{Done, Pending, false},
+		{Done, Probed, true},            // redo             // done is final
+		{SkippedHDR, Pending, true},     // reset
+		{Patched, Validated, true},      // rollback after remote failure
+		{Transcoded, Probed, true},      // rewind, work file lost
+		{Uploaded, Probed, false},       // no rewind once remote
+		{Trashed, Validated, false},     // original already trashed
+		{Verified, NeedsConfirm, true},  // faces named mid-run
+		{SkippedCorrupt, Pending, true}, // reset after a fixed check
+		{Failed, Pending, true},         // reset
+		{SkippedCorrupt, Probed, false}, // reset only to pending
 	}
 	for _, c := range cases {
 		err := CheckTransition(c.from, c.to)
@@ -102,5 +103,50 @@ func TestStore(t *testing.T) {
 	states, _ := st.States(ctx)
 	if states["a1"] != DecodeOK {
 		t.Fatalf("states = %v", states)
+	}
+}
+
+func TestMigrationAndRedo(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "old.db")
+	// A manifest from before source_asset_id existed.
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.db.Exec(`ALTER TABLE assets DROP COLUMN source_asset_id`); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	if st, err = Open(path); err != nil {
+		t.Fatalf("reopen old manifest: %v", err)
+	}
+	defer st.Close()
+
+	r, _ := st.Ensure(ctx, "orig", "clip.mp4", 100)
+	if r.Source() != "orig" {
+		t.Errorf("Source() = %q", r.Source())
+	}
+	if err := st.MarkRedo(ctx, &r); err == nil {
+		t.Error("redo of a pending asset allowed")
+	}
+	for _, to := range []State{Downloaded, DecodeOK, Probed, Transcoded, MetadataCopied, Validated, Uploaded, Copied, Patched, Verified, Trashed, Done} {
+		if to == Uploaded {
+			r.NewAssetID = "repl1"
+		}
+		if err := st.Transition(ctx, &r, to, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := st.MarkRedo(ctx, &r); err != nil {
+		t.Fatal(err)
+	}
+	got, _, _ := st.Get(ctx, "orig")
+	if got.State != Probed || got.SourceAssetID != "repl1" || got.NewAssetID != "" || got.Source() != "repl1" {
+		t.Errorf("after redo: %+v", got)
+	}
+	repl, _ := st.Replacements(ctx)
+	if repl["repl1"] != "orig" {
+		t.Errorf("Replacements = %v", repl)
 	}
 }

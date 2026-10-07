@@ -24,10 +24,22 @@ type Record struct {
 	BackupPath   string
 	OutputPath   string
 	NewAssetID   string
-	Error        string
-	People       string // named people on the original, comma separated
-	Detail       string
-	UpdatedAt    time.Time
+	// SourceAssetID is the asset being replaced when it is not the original:
+	// during a redo it is the previous replacement. Empty means AssetID.
+	SourceAssetID string
+	Error         string
+	People        string // named people on the original, comma separated
+	Detail        string
+	UpdatedAt     time.Time
+}
+
+// Source is the Immich asset this record replaces: the original, or the
+// previous replacement during a redo.
+func (r Record) Source() string {
+	if r.SourceAssetID != "" {
+		return r.SourceAssetID
+	}
+	return r.AssetID
 }
 
 // Store is the SQLite manifest.
@@ -80,19 +92,47 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("init manifest %s: %w", path, err)
 	}
+	if err := migrate(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("upgrade manifest %s: %w", path, err)
+	}
 	return &Store{db: db}, nil
+}
+
+// migrate adds columns introduced after a manifest was created.
+func migrate(db *sql.DB) error {
+	rows, err := db.Query(`SELECT name FROM pragma_table_info('assets')`)
+	if err != nil {
+		return err
+	}
+	have := map[string]bool{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return err
+		}
+		have[name] = true
+	}
+	rows.Close()
+	if !have["source_asset_id"] {
+		if _, err := db.Exec(`ALTER TABLE assets ADD COLUMN source_asset_id TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }
 
 const cols = `asset_id, file_name, state, resume_from, original_size, new_size, crf,
-	backup_path, output_path, new_asset_id, error, people, detail, updated_at`
+	backup_path, output_path, new_asset_id, source_asset_id, error, people, detail, updated_at`
 
 func scan(row interface{ Scan(...any) error }) (Record, error) {
 	var r Record
 	var updated string
 	err := row.Scan(&r.AssetID, &r.FileName, &r.State, &r.ResumeFrom, &r.OriginalSize, &r.NewSize,
-		&r.CRF, &r.BackupPath, &r.OutputPath, &r.NewAssetID, &r.Error, &r.People, &r.Detail, &updated)
+		&r.CRF, &r.BackupPath, &r.OutputPath, &r.NewAssetID, &r.SourceAssetID, &r.Error, &r.People, &r.Detail, &updated)
 	if err != nil {
 		return r, err
 	}
@@ -136,10 +176,11 @@ func (s *Store) Transition(ctx context.Context, r *Record, to State, msg string)
 	defer tx.Rollback()
 	now := time.Now().UTC()
 	res, err := tx.ExecContext(ctx, `UPDATE assets SET file_name=?, state=?, resume_from=?, original_size=?,
-		new_size=?, crf=?, backup_path=?, output_path=?, new_asset_id=?, error=?, people=?, detail=?, updated_at=?
+		new_size=?, crf=?, backup_path=?, output_path=?, new_asset_id=?, source_asset_id=?, error=?, people=?,
+		detail=?, updated_at=?
 		WHERE asset_id=? AND state=?`,
 		r.FileName, to, r.ResumeFrom, r.OriginalSize, r.NewSize, r.CRF, r.BackupPath, r.OutputPath,
-		r.NewAssetID, r.Error, r.People, r.Detail, now.Format(time.RFC3339Nano), r.AssetID, r.State)
+		r.NewAssetID, r.SourceAssetID, r.Error, r.People, r.Detail, now.Format(time.RFC3339Nano), r.AssetID, r.State)
 	if err != nil {
 		return err
 	}
@@ -187,4 +228,40 @@ func (s *Store) States(ctx context.Context) (map[string]State, error) {
 		m[r.AssetID] = r.State
 	}
 	return m, nil
+}
+
+// Replacements maps every Immich asset this tool uploaded (current or
+// earlier replacement) to the original asset id it stands in for.
+func (s *Store) Replacements(ctx context.Context) (map[string]string, error) {
+	recs, err := s.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	m := map[string]string{}
+	for _, r := range recs {
+		if r.NewAssetID != "" {
+			m[r.NewAssetID] = r.AssetID
+		}
+		if r.SourceAssetID != "" {
+			m[r.SourceAssetID] = r.AssetID
+		}
+	}
+	return m, nil
+}
+
+// MarkRedo turns a done record into a redo: its current replacement becomes
+// the asset to replace, and the pipeline restarts at the encode step (from
+// the backup of the original).
+func (s *Store) MarkRedo(ctx context.Context, r *Record) error {
+	if r.State != Done {
+		return fmt.Errorf("asset %s is %s, not done", r.AssetID, r.State)
+	}
+	if r.NewAssetID == "" {
+		return fmt.Errorf("asset %s has no recorded replacement", r.AssetID)
+	}
+	prev := r.NewAssetID
+	r.SourceAssetID = prev
+	r.NewAssetID, r.OutputPath, r.NewSize = "", "", 0
+	r.Error, r.ResumeFrom, r.People, r.Detail = "", "", "", ""
+	return s.Transition(ctx, r, Probed, "redo: replace "+prev)
 }

@@ -849,3 +849,113 @@ func TestVerifyReplacement(t *testing.T) {
 		t.Errorf("missing backup: problem %q err %v", problem, err)
 	}
 }
+
+// TestRedoReplacesFlawedReplacement redoes a done asset whose replacement
+// has duplicate timestamps: a fresh encode from the backup replaces it, and
+// changes made to the replacement since are carried over.
+func TestRedoReplacesFlawedReplacement(t *testing.T) {
+	e := setup(t)
+	e.proc.Opts.Apply = true
+	ctx := context.Background()
+	id := e.fake.add(e.set.VFR.Path)
+	if o := e.proc.Process(ctx, id); o.State != manifest.Done {
+		t.Fatalf("first run: %+v", o)
+	}
+	rec := e.state(id)
+	first := rec.NewAssetID
+	// Make the replacement look like one uploaded by the old code, and
+	// edit it in "Immich" after the fact.
+	bad := oldWayEncode(t, e.set.VFR.Path)
+	e.fake.files[first] = bad
+	b, _ := os.ReadFile(bad)
+	sum := sha1.Sum(b)
+	e.fake.assets[first].Checksum = base64.StdEncoding.EncodeToString(sum[:])
+	later := "edited after replacement"
+	e.fake.assets[first].ExifInfo.Description = &later
+	downloads := e.fake.downloads
+
+	if err := e.store.MarkRedo(ctx, &rec); err != nil {
+		t.Fatal(err)
+	}
+	if o := e.proc.Process(ctx, id); o.State != manifest.Done || o.Err != nil {
+		t.Fatalf("redo: %+v", o)
+	}
+	rec = e.state(id)
+	second := e.fake.assets[rec.NewAssetID]
+	switch {
+	case rec.NewAssetID == first:
+		t.Fatal("no new replacement")
+	case !e.fake.assets[first].IsTrashed:
+		t.Error("flawed replacement not trashed")
+	case second.IsTrashed:
+		t.Error("new replacement trashed")
+	case e.fake.downloads != downloads:
+		t.Error("redo downloaded instead of using the backup")
+	case second.ExifInfo.Description == nil || *second.ExifInfo.Description != later:
+		t.Errorf("description %v, want the replacement's later edit", second.ExifInfo.Description)
+	case len(e.fake.albums[rec.NewAssetID]) != 1:
+		t.Error("albums not carried over")
+	}
+	if dups, _ := e.proc.Tools.DuplicateTimestamps(ctx, e.fake.files[rec.NewAssetID]); dups != 0 {
+		t.Errorf("new replacement has %d duplicate timestamps", dups)
+	}
+	if problem, err := VerifyReplacement(ctx, e.fake, e.proc.Tools, rec, e.proc.Cfg.WorkDir, func(int64) {}); problem != "" || err != nil {
+		t.Errorf("verify after redo: %q %v", problem, err)
+	}
+}
+
+func TestRedoNeedsBackup(t *testing.T) {
+	e := setup(t)
+	e.proc.Opts.Apply = true
+	ctx := context.Background()
+	id := e.fake.add(e.set.Portrait.Path)
+	e.proc.Process(ctx, id)
+	rec := e.state(id)
+	if err := e.store.MarkRedo(ctx, &rec); err != nil {
+		t.Fatal(err)
+	}
+	os.Remove(rec.BackupPath)
+	uploads := e.fake.uploads
+	o := e.proc.Process(ctx, id)
+	if o.Err == nil || !strings.Contains(o.Err.Error(), "backup") || e.fake.uploads != uploads || e.fake.downloads != 1 {
+		t.Fatalf("redo without backup: %+v uploads %d downloads %d", o, e.fake.uploads, e.fake.downloads)
+	}
+}
+
+func TestReplacementIsNotReprocessed(t *testing.T) {
+	e := setup(t)
+	e.proc.Opts.Apply = true
+	ctx := context.Background()
+	id := e.fake.add(e.set.Portrait.Path)
+	e.proc.Process(ctx, id)
+	repl := e.state(id).NewAssetID
+	o := e.proc.Process(ctx, repl)
+	if o.Err == nil || !strings.Contains(o.Err.Error(), "redo --asset "+id) {
+		t.Fatalf("processing a replacement: %+v", o)
+	}
+	if _, ok, _ := e.store.Get(ctx, repl); ok {
+		t.Error("replacement recorded as an original")
+	}
+}
+
+// TestRedoIdenticalEncodeKeepsReplacement redoes a replacement that was
+// already fine: the fresh encode is byte-identical, so nothing is uploaded
+// or trashed and the asset is done again with the same replacement.
+func TestRedoIdenticalEncodeKeepsReplacement(t *testing.T) {
+	e := setup(t)
+	e.proc.Opts.Apply = true
+	ctx := context.Background()
+	id := e.fake.add(e.set.Portrait.Path)
+	e.proc.Process(ctx, id)
+	rec := e.state(id)
+	first, uploads := rec.NewAssetID, e.fake.uploads
+	if err := e.store.MarkRedo(ctx, &rec); err != nil {
+		t.Fatal(err)
+	}
+	o := e.proc.Process(ctx, id)
+	rec = e.state(id)
+	if o.State != manifest.Done || rec.NewAssetID != first || rec.SourceAssetID != "" ||
+		e.fake.uploads != uploads || e.fake.assets[first].IsTrashed {
+		t.Fatalf("outcome %+v record %+v uploads %d", o, rec, e.fake.uploads)
+	}
+}

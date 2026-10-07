@@ -53,6 +53,7 @@ immich-transcode status                    # manifest: state, savings, failures
 immich-transcode resume --apply            # replace exactly those validated videos in Immich
 immich-transcode reset --state skipped_corrupt   # re-check skipped assets
 immich-transcode verify                    # re-check done replacements as stored in Immich
+immich-transcode redo --asset <id> --apply # re-encode one from its backup and replace it
 ```
 
 `run` searches Immich for candidates and picks the best by estimated
@@ -88,6 +89,23 @@ orientation, audio streams, frame count, duplicate timestamps, creation
 date and GPS. It's read-only towards Immich, and each download is deleted
 after checking. It lists any replacements with problems and exits non-zero
 if there are any. Use `--asset <id>` to check specific assets.
+
+### Redoing a replacement
+
+`redo --asset <id>` re-encodes a `done` asset from the local backup of its
+original, and replaces the replacement currently in Immich, for example one
+that `verify` reported. The current replacement is treated like an original:
+its albums, favorite, shared links, stack, description, rating, tags and
+date carry over to the new upload, including anything you changed after the
+first replacement. The new upload is verified before the old replacement is
+moved to the trash. Nothing is downloaded; if the backup is missing, the
+redo refuses rather than re-encoding the replacement. Without `--apply` it
+stops after validating the new encode, like `run`.
+
+If the fresh encode is byte-identical to the current replacement (same
+ffmpeg and settings), nothing is uploaded and the current replacement is
+kept. Replacements made by this tool are never offered as candidates by
+`scan` or `run`.
 
 ### Re-checking skipped assets
 

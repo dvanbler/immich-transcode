@@ -37,7 +37,7 @@ func NamedPeople(a *immich.Asset) []string {
 func (p *Processor) faceGate(ctx context.Context, rec *manifest.Record) (bool, string, error) {
 	rctx, cancel := remoteCtx(ctx)
 	defer cancel()
-	a, err := p.Immich.GetAsset(rctx, rec.AssetID)
+	a, err := p.Immich.GetAsset(rctx, rec.Source())
 	if err != nil {
 		return false, "", err
 	}
@@ -46,11 +46,26 @@ func (p *Processor) faceGate(ctx context.Context, rec *manifest.Record) (bool, s
 	if len(names) == 0 || p.Opts.AllowFaceLoss {
 		return true, "", nil
 	}
-	p.Log.Warn("named people would lose their face assignments", "asset", rec.AssetID, "people", names)
+	p.Log.Warn("named people would lose their face assignments", "asset", rec.Source(), "people", names)
 	return false, fmt.Sprintf("named people would be lost: %s (rerun with --allow-face-loss, then reassign them)", rec.People), nil
 }
 
 func (p *Processor) upload(ctx context.Context, rec *manifest.Record, asset *immich.Asset) (manifest.State, string, error) {
+	if rec.SourceAssetID != "" {
+		// Redo: if the fresh encode is byte-identical to the current
+		// replacement (same ffmpeg and settings), there is nothing to
+		// replace. Keep the current one.
+		_, b64, err := immich.FileSHA1(rec.OutputPath)
+		if err != nil {
+			return "", "", err
+		}
+		if b64 == asset.Checksum {
+			kept := rec.SourceAssetID
+			rec.NewAssetID, rec.SourceAssetID = kept, ""
+			os.Remove(rec.OutputPath)
+			return manifest.Done, "redo: new encode is identical to the current replacement " + kept + "; kept it", nil
+		}
+	}
 	ok, why, err := p.faceGate(ctx, rec)
 	if err != nil {
 		return "", "", err
@@ -98,8 +113,8 @@ func (p *Processor) upload(ctx context.Context, rec *manifest.Record, asset *imm
 }
 
 func (p *Processor) adoptDuplicate(ctx context.Context, rec *manifest.Record, id string) error {
-	if id == rec.AssetID {
-		return fmt.Errorf("server reports the transcode as a duplicate of the original itself")
+	if id == rec.AssetID || id == rec.Source() {
+		return fmt.Errorf("server reports the transcode as a duplicate of the asset it replaces")
 	}
 	rctx, cancel := remoteCtx(ctx)
 	defer cancel()
@@ -122,7 +137,7 @@ func (p *Processor) copyRelationships(ctx context.Context, rec *manifest.Record)
 	p.Console.Status(rec.FileName + ": copying albums, favorite, shared links, stack, sidecar")
 	rctx, cancel := remoteCtx(ctx)
 	defer cancel()
-	if err := p.Immich.CopyRelationships(rctx, rec.AssetID, rec.NewAssetID); err != nil {
+	if err := p.Immich.CopyRelationships(rctx, rec.Source(), rec.NewAssetID); err != nil {
 		return "", "", err
 	}
 	return manifest.Copied, "albums, favorite, shared links, stack, sidecar", nil
@@ -172,7 +187,7 @@ func (p *Processor) patch(ctx context.Context, rec *manifest.Record) (manifest.S
 	}
 	rctx, cancel := remoteCtx(ctx)
 	defer cancel()
-	oldA, err := p.Immich.GetAsset(rctx, rec.AssetID)
+	oldA, err := p.Immich.GetAsset(rctx, rec.Source())
 	if err != nil {
 		return "", "", err
 	}
@@ -277,7 +292,7 @@ func (p *Processor) verifyTimeline(ctx context.Context, rec *manifest.Record) (m
 		return "", "", err
 	}
 	rctx, cancel := remoteCtx(ctx)
-	oldA, err := p.Immich.GetAsset(rctx, rec.AssetID)
+	oldA, err := p.Immich.GetAsset(rctx, rec.Source())
 	cancel()
 	if err != nil {
 		return "", "", err
@@ -353,10 +368,14 @@ func (p *Processor) trashOriginal(ctx context.Context, rec *manifest.Record) (ma
 	}
 	rctx, cancel := remoteCtx(ctx)
 	defer cancel()
-	if err := p.Immich.Trash(rctx, rec.AssetID); err != nil {
+	if err := p.Immich.Trash(rctx, rec.Source()); err != nil {
 		return "", "", err
 	}
-	return manifest.Trashed, "original moved to trash; replaced by " + rec.NewAssetID, nil
+	what := "original"
+	if rec.SourceAssetID != "" {
+		what = "previous replacement " + rec.SourceAssetID
+	}
+	return manifest.Trashed, what + " moved to trash; replaced by " + rec.NewAssetID, nil
 }
 
 func (p *Processor) complete(rec *manifest.Record) (manifest.State, string, error) {

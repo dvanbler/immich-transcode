@@ -97,6 +97,16 @@ func CheckTransition(from, to State) error {
 	if to == Done && from == Trashed {
 		return nil
 	}
+	// Redo whose fresh encode is byte-identical to the current replacement:
+	// nothing is uploaded or trashed, the asset is simply done again.
+	if from == Validated && to == Done {
+		return nil
+	}
+	// Redo: a done asset is re-encoded from its backup to replace its
+	// current replacement (see the redo command).
+	if from == Done && to == Probed {
+		return nil
+	}
 	// Reset: a skipped or failed asset is re-evaluated from the start
 	// (e.g. after a check was fixed or thresholds changed).
 	if to == Pending && from.Terminal() && from != Done && from != NeedsConfirm {

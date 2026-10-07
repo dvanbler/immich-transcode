@@ -29,10 +29,19 @@ func findCandidates(ctx context.Context, s *session, minSize int64) ([]candidate
 	if err != nil {
 		return nil, nil, err
 	}
+	replacements, err := s.store.Replacements(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
 	excluded := map[string]int{}
 	var out []candidate
 	err = s.client.SearchVideos(ctx, minSize, func(page []immich.Asset) error {
 		for _, a := range page {
+			if _, ok := replacements[a.Id.String()]; ok {
+				// Already HEVC from this tool; redo works from the backup.
+				excluded["replacement made by immich-transcode"]++
+				continue
+			}
 			if reason := exclude(a, s.userID, states[a.Id.String()]); reason != "" {
 				excluded[reason]++
 				continue
