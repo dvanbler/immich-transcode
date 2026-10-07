@@ -748,6 +748,33 @@ func TestPixelVFRClipIsNotCorrupt(t *testing.T) {
 	if o.State != manifest.Done {
 		t.Fatalf("outcome %+v (detail %q)", o, e.state(id).Detail)
 	}
+	// Every frame keeps its own timestamp.
+	dups, err := e.proc.Tools.DuplicateTimestamps(context.Background(), e.fake.files[e.state(id).NewAssetID])
+	if err != nil || dups != 0 {
+		t.Errorf("replacement has %d duplicate timestamps (%v)", dups, err)
+	}
+}
+
+// TestValidationRejectsDuplicateTimestamps encodes the Pixel-like clip the
+// old way (encoder time base 1/guessed-fps), which puts two frames on one
+// timestamp, and checks validation refuses it.
+func TestValidationRejectsDuplicateTimestamps(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	out := filepath.Join(t.TempDir(), "old-way.mp4")
+	cmd := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-y", "-i", e.set.VFR.Path,
+		"-map", "0:v:0", "-map", "0:a?", "-c:v", "libx265", "-preset", "ultrafast", "-x265-params", "log-level=error",
+		"-c:a", "copy", "-fps_mode", "passthrough", "-map_metadata", "0", "-f", "mp4", out)
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("ffmpeg: %v %s", err, b)
+	}
+	if n, _ := e.proc.Tools.DuplicateTimestamps(ctx, out); n == 0 {
+		t.Fatal("the old-style encode has no duplicate timestamps; this test checks nothing")
+	}
+	err := ValidateOutput(ctx, e.proc.Tools, e.set.VFR.Path, out)
+	if err == nil || !strings.Contains(err.Error(), "share a timestamp") {
+		t.Fatalf("validation error = %v, want duplicate-timestamp failure", err)
+	}
 }
 
 // TestDateEditedInImmichSurvives covers a video whose date was corrected in

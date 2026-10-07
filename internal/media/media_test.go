@@ -173,3 +173,18 @@ func TestCompareMeta(t *testing.T) {
 		t.Error("changed date not detected")
 	}
 }
+
+func TestTranscodeArgsKeepSourceTimeBase(t *testing.T) {
+	args := TranscodeArgs("i", "o", sdrProbe(), MP4, EncodeSettings{CRF: 26, Preset: "slow"})
+	if tb, _ := argValue(args, "-enc_time_base"); tb != "-1" {
+		t.Errorf("default -enc_time_base = %q, want -1", tb)
+	}
+	args = TranscodeArgs("i", "o", sdrProbe(), MP4, EncodeSettings{CRF: 26, Preset: "slow", SourceTimeBase: "demux"})
+	if tb, _ := argValue(args, "-enc_time_base"); tb != "demux" {
+		t.Errorf("ffmpeg 7 -enc_time_base = %q, want demux", tb)
+	}
+	// It is an output option: it must come after the input.
+	if slices.Index(args, "-enc_time_base") < slices.Index(args, "-i") {
+		t.Error("-enc_time_base placed before -i")
+	}
+}

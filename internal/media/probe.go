@@ -229,6 +229,29 @@ func atoi(s string) int64 {
 	return v
 }
 
+// DuplicateTimestamps counts video packets whose presentation timestamp
+// repeats an earlier one: frames that would be shown at the same instant.
+func (t Tools) DuplicateTimestamps(ctx context.Context, path string) (int, error) {
+	out, _, err := runCapture(ctx, t.FFprobe, "-v", "error", "-select_streams", "v:0",
+		"-show_entries", "packet=pts", "-of", "csv=p=0", path)
+	if err != nil {
+		return 0, err
+	}
+	seen := map[string]bool{}
+	dups := 0
+	for _, line := range strings.Split(string(out), "\n") {
+		pts := strings.TrimSuffix(strings.TrimSpace(line), ",")
+		if pts == "" || pts == "N/A" {
+			continue
+		}
+		if seen[pts] {
+			dups++
+		}
+		seen[pts] = true
+	}
+	return dups, nil
+}
+
 // CountVideoPackets counts packets in the first video stream by demuxing the
 // file (fast; does not decode).
 func (t Tools) CountVideoPackets(ctx context.Context, path string) (int64, error) {

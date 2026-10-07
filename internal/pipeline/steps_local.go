@@ -135,7 +135,7 @@ func (p *Processor) transcode(ctx context.Context, rec *manifest.Record, asset *
 	out := filepath.Join(p.Cfg.WorkDir, rec.AssetID+c.Ext)
 	tmp := filepath.Join(p.Cfg.WorkDir, rec.AssetID+".partial"+c.Ext)
 	crf := p.Opts.CRF
-	args := media.TranscodeArgs(rec.BackupPath, tmp, pr, c, media.EncodeSettings{CRF: crf, Preset: p.Cfg.Preset})
+	args := media.TranscodeArgs(rec.BackupPath, tmp, pr, c, media.EncodeSettings{CRF: crf, Preset: p.Cfg.Preset, SourceTimeBase: p.Tools.SourceTimeBase()})
 	p.Log.Debug("ffmpeg", "asset", rec.AssetID, "args", args)
 
 	start := time.Now()
@@ -240,6 +240,17 @@ func ValidateOutput(ctx context.Context, t media.Tools, orig, out string) error 
 	}
 	if co != cn {
 		return fmt.Errorf("video packet count %d differs from original %d", cn, co)
+	}
+	do, err := t.DuplicateTimestamps(ctx, orig)
+	if err != nil {
+		return err
+	}
+	dn, err := t.DuplicateTimestamps(ctx, out)
+	if err != nil {
+		return err
+	}
+	if dn > do {
+		return fmt.Errorf("%d video frames share a timestamp with another frame (original: %d)", dn, do)
 	}
 	mo, err := t.ReadMeta(ctx, orig)
 	if err != nil {

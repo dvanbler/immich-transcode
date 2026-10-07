@@ -24,7 +24,7 @@ import (
 // which is not a decoding problem.
 func (t Tools) DecodeCheck(ctx context.Context, path string) (problems string, err error) {
 	cmd := command(ctx, t.FFmpeg, "-nostdin", "-hide_banner", "-v", "error",
-		"-i", path, "-map", "0:v:0", "-enc_time_base", "-1", "-f", "null", "-")
+		"-i", path, "-map", "0:v:0", "-enc_time_base", t.SourceTimeBase(), "-f", "null", "-")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	cmd.Stdout = io.Discard
@@ -81,6 +81,9 @@ var mp4AudioCodecs = map[string]bool{
 type EncodeSettings struct {
 	CRF    int
 	Preset string
+	// SourceTimeBase is Tools.SourceTimeBase(): the -enc_time_base value
+	// that keeps the source's time base.
+	SourceTimeBase string
 }
 
 // TranscodeArgs builds the ffmpeg command line for an HEVC re-encode of in
@@ -107,6 +110,11 @@ func TranscodeArgs(in, out string, p Probe, c Container, s EncodeSettings) []str
 	}
 	args = append(args,
 		"-fps_mode", "passthrough",
+		// Keep the source time base (e.g. 1/90000). By default the encoder
+		// gets 1/guessed-frame-rate, and phone video whose real frame
+		// interval is a bit shorter than that has two frames rounded onto
+		// the same timestamp every few hundred frames.
+		"-enc_time_base", timeBase(s.SourceTimeBase),
 		"-map_metadata", "0",
 		"-movflags", "+faststart+use_metadata_tags",
 		"-progress", "pipe:1", "-nostats",
@@ -114,6 +122,13 @@ func TranscodeArgs(in, out string, p Probe, c Container, s EncodeSettings) []str
 		out,
 	)
 	return args
+}
+
+func timeBase(flag string) string {
+	if flag == "" {
+		return "-1"
+	}
+	return flag
 }
 
 // audioCodec is "copy" unless an audio stream cannot be carried in the

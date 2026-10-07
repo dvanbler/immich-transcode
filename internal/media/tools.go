@@ -15,6 +15,20 @@ type Tools struct {
 	FFmpeg   string
 	FFprobe  string
 	ExifTool string
+
+	// TimeBaseFlag is the -enc_time_base value meaning "keep the source's
+	// time base": "demux" on ffmpeg 7+, "-1" on older versions. Check sets
+	// it by asking ffmpeg; empty means "-1".
+	TimeBaseFlag string
+}
+
+// SourceTimeBase returns the -enc_time_base value that keeps the source's
+// time base.
+func (t Tools) SourceTimeBase() string {
+	if t.TimeBaseFlag == "" {
+		return "-1"
+	}
+	return t.TimeBaseFlag
 }
 
 // ToolInfo describes one resolved tool.
@@ -61,6 +75,11 @@ func (t *Tools) Check(ctx context.Context) ([]ToolInfo, error) {
 	}
 	if !bytes.Contains(out, []byte("libx265")) {
 		return infos, errors.New("this ffmpeg build has no libx265 encoder; a BtbN static build (https://github.com/BtbN/FFmpeg-Builds) includes it")
+	}
+	t.TimeBaseFlag = "-1"
+	if command(ctx, t.FFmpeg, "-nostdin", "-v", "error", "-f", "lavfi", "-i", "nullsrc=d=0.1",
+		"-enc_time_base", "demux", "-f", "null", "-").Run() == nil {
+		t.TimeBaseFlag = "demux"
 	}
 	return infos, nil
 }
