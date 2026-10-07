@@ -13,9 +13,10 @@ func (a *app) resetCmd() *cobra.Command {
 	var states, assets []string
 	cmd := &cobra.Command{
 		Use:   "reset",
-		Short: "Send skipped or failed assets back to pending so the next run re-checks them",
+		Short: "Send skipped or failed assets back to pending so they are re-checked",
 		Long: `Send skipped or failed assets back to pending, e.g. after a check was fixed or
-the bpp thresholds were changed. The next run or scan considers them again.
+the bpp thresholds were changed. The next resume, run or scan considers them
+again.
 
 Only the manifest changes: nothing is sent to Immich, and backups are kept
 (a re-run verifies the existing backup by checksum instead of downloading).

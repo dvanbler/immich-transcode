@@ -44,11 +44,17 @@ export IMMICH_API_KEY=...
 
 immich-transcode scan                      # ranked candidates, read-only
 immich-transcode run --limit 3             # dry run: download, encode, validate
-immich-transcode run --limit 3 --apply     # replace them in Immich
 immich-transcode status                    # manifest: state, savings, failures
-immich-transcode resume --apply            # continue anything left partway
-immich-transcode reset --state skipped_corrupt   # re-check skipped assets next run
+immich-transcode resume --apply            # replace exactly those validated videos in Immich
+immich-transcode reset --state skipped_corrupt   # re-check skipped assets
 ```
+
+`run` searches Immich for candidates and picks the best by estimated
+savings, starting new videos as well as continuing unfinished ones. `resume`
+only continues what the manifest already has unfinished: assets partway
+through, dry-run encodes awaiting `--apply`, and `pending` assets such as
+those sent back by `reset`. It never starts new videos. To commit exactly
+what a dry run validated, use `resume --apply`.
 
 Every setting in the config file can also be set by a flag (`--server`,
 `--backup-dir`, `--work-dir`, `--preset`, `--concurrency`, `--ffmpeg`, ...).
@@ -71,8 +77,9 @@ new value. The output shows the CRF of each result.
 
 Skipped assets are never selected again. Use `reset` to send them back to
 `pending`, for example after changing the `bpp` thresholds or after a fix to a
-check. It changes only the manifest: the next run verifies the existing
-backup by checksum instead of downloading it, then re-runs every check.
+check. It changes only the manifest: the next `resume` or `run` verifies the
+existing backup by checksum instead of downloading it, then re-runs every
+check.
 `reset` also accepts `failed` and specific `--asset` ids. Assets that are
 `done` can't be reset.
 

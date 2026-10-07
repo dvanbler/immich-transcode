@@ -83,7 +83,11 @@ func (a *app) resumeCmd() *cobra.Command {
 	var f runFlags
 	cmd := &cobra.Command{
 		Use:   "resume",
-		Short: "Continue assets left partway through the pipeline",
+		Short: "Continue unfinished assets from the manifest",
+		Long: `Continue every unfinished asset in the manifest: those left partway through
+the pipeline (including encodes validated by a dry run) and pending ones,
+such as assets sent back by reset. Unlike run, resume does not search Immich
+for new candidates.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.process(f, func(ctx context.Context, s *session) ([]string, error) {
 				recs, err := s.store.List(ctx)
@@ -92,10 +96,7 @@ func (a *app) resumeCmd() *cobra.Command {
 				}
 				var ids []string
 				for _, r := range recs {
-					switch {
-					case r.State.InProgress(),
-						r.State == manifest.Failed && f.retryFailed,
-						r.State == manifest.NeedsConfirm && f.allowFaceLoss:
+					if resumable(r.State, f) {
 						ids = append(ids, r.AssetID)
 					}
 				}
@@ -112,6 +113,21 @@ func (a *app) resumeCmd() *cobra.Command {
 	fl.BoolVar(&f.allowFaceLoss, "allow-face-loss", false, "also continue needs_confirm assets, dropping face assignments")
 	fl.BoolVar(&f.retryFailed, "retry-failed", false, "also retry failed assets")
 	return cmd
+}
+
+// resumable reports whether resume picks up an asset in state st: anything
+// unfinished (pending or partway), plus failed and needs_confirm assets when
+// their flags are given.
+func resumable(st manifest.State, f runFlags) bool {
+	switch {
+	case st == manifest.Pending, st.InProgress():
+		return true
+	case st == manifest.Failed:
+		return f.retryFailed
+	case st == manifest.NeedsConfirm:
+		return f.allowFaceLoss
+	}
+	return false
 }
 
 // process runs the pipeline over the ids chosen by pick.
