@@ -146,9 +146,10 @@ func (c *Client) MyUserID(ctx context.Context) (string, error) {
 }
 
 // SearchVideos pages through videos of at least minSize bytes, largest
-// first, calling fn for each page. Trashed assets are excluded by the server
+// first, calling fn for each page. A non-nil takenBefore limits it to videos
+// taken before that instant. Trashed assets are excluded by the server
 // (search never returns them unless asked) and again by the caller.
-func (c *Client) SearchVideos(ctx context.Context, minSize int64, fn func([]Asset) error) error {
+func (c *Client) SearchVideos(ctx context.Context, minSize int64, takenBefore *time.Time, fn func([]Asset) error) error {
 	video := api.VIDEO
 	minSz := float64(minSize)
 	vis := []api.AssetVisibility{api.Timeline, api.Archive}
@@ -166,6 +167,9 @@ func (c *Client) SearchVideos(ctx context.Context, minSize int64, fn func([]Asse
 		OrderBy:  &api.SearchOrder{Field: &field, Direction: &dir},
 		Size:     &size,
 		WithExif: &t,
+	}
+	if takenBefore != nil {
+		req.Filter.TakenAt = &api.DateFilter{Lt: takenBefore}
 	}
 	for {
 		r, err := c.api.SearchAssetsWithResponse(ctx, nil, req)

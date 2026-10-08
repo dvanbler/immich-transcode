@@ -13,6 +13,7 @@ import (
 
 func (a *app) scanCmd() *cobra.Command {
 	minSize := config.Default().MinSize
+	var takenBefore config.Cutoff
 	var limit int
 	cmd := &cobra.Command{
 		Use:   "scan",
@@ -22,12 +23,15 @@ func (a *app) scanCmd() *cobra.Command {
 			if !cmd.Flags().Changed("min-size") {
 				minSize = a.cfg.MinSize
 			}
+			if !cmd.Flags().Changed("taken-before") {
+				takenBefore = a.cfg.TakenBefore
+			}
 			s, err := a.preflight(ctx, preflightOpts{perms: permsRead})
 			if err != nil {
 				return err
 			}
 			defer s.close()
-			cands, excl, err := findCandidates(ctx, s, int64(minSize))
+			cands, excl, err := findCandidates(ctx, s, int64(minSize), takenBefore)
 			if err != nil {
 				return err
 			}
@@ -56,6 +60,7 @@ func (a *app) scanCmd() *cobra.Command {
 			}
 			a.console.Printf("\n%d candidates of at least %s; estimated saving %s (rough: assumes %.2f bpp output at 30 fps).",
 				len(cands), config.HumanBytes(int64(minSize)), config.HumanBytes(total), s.cfg.BPP.EstimatedOutput)
+			a.console.Printf("Taken before: %s (taken_before)", takenBefore.Describe(time.Now()))
 			for _, e := range excl {
 				a.console.Printf("  excluded %5d  %s", e.count, e.reason)
 			}
@@ -63,6 +68,7 @@ func (a *app) scanCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().Var(&minSize, "min-size", "only consider videos at least this large (e.g. 200MB; config min_size)")
+	cmd.Flags().Var(&takenBefore, "taken-before", "only consider videos taken before a date (2026-09-01) or older than an age (90d); config taken_before")
 	cmd.Flags().IntVar(&limit, "limit", 50, "number of candidates to list (0 for all)")
 	return cmd
 }

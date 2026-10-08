@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseSize(t *testing.T) {
@@ -72,6 +73,7 @@ func TestYAMLRoundTrip(t *testing.T) {
 	c.MinSize = 25 * MB
 	c.Preset = "medium"
 	c.BPP.H264 = 0.2
+	c.TakenBefore, _ = ParseCutoff("90d")
 	c.APIKey = "secret"
 	if err := c.Finalize(); err != nil {
 		t.Fatal(err)
@@ -92,5 +94,38 @@ func TestYAMLRoundTrip(t *testing.T) {
 	}
 	if got != c {
 		t.Errorf("round trip changed settings:\n%+v\n%+v\n%s", got, c, out)
+	}
+}
+
+func TestCutoff(t *testing.T) {
+	now := time.Date(2026, 10, 7, 15, 0, 0, 0, time.Local)
+	cases := []struct {
+		in   string
+		want time.Time
+	}{
+		{"2026-09-01", time.Date(2026, 9, 1, 0, 0, 0, 0, time.Local)},
+		{"2026-09-01T12:00:00Z", time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)},
+		{"90d", now.AddDate(0, 0, -90)},
+		{"12w", now.AddDate(0, 0, -84)},
+		{"0d", now},
+	}
+	for _, c := range cases {
+		cut, err := ParseCutoff(c.in)
+		if err != nil {
+			t.Errorf("%q: %v", c.in, err)
+			continue
+		}
+		got, ok := cut.Before(now)
+		if !ok || !got.Equal(c.want) {
+			t.Errorf("%q → %v, want %v", c.in, got, c.want)
+		}
+	}
+	if _, ok := (Cutoff{}).Before(now); ok {
+		t.Error("empty cutoff limits")
+	}
+	for _, bad := range []string{"yesterday", "90", "d", "-5d", "2026-13-01", "3m"} {
+		if _, err := ParseCutoff(bad); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
 	}
 }

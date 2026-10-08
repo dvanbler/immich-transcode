@@ -35,7 +35,10 @@ type Config struct {
 	Preset            string  `yaml:"preset"`
 	MinSavingsPercent float64 `yaml:"min_savings_percent"`
 	MinSize           Size    `yaml:"min_size"`
-	Concurrency       int     `yaml:"concurrency"`
+	// TakenBefore limits scan and run to videos taken before a date
+	// ("2026-09-01") or older than an age ("90d", "12w"). Empty: no limit.
+	TakenBefore Cutoff `yaml:"taken_before"`
+	Concurrency int    `yaml:"concurrency"`
 
 	BPP BPPThresholds `yaml:"bpp"`
 
@@ -247,4 +250,86 @@ func HumanBytes(n int64) string {
 		return fmt.Sprintf("%s%d B", sign, n)
 	}
 	return fmt.Sprintf("%s%.2f %s", sign, v, units[i])
+}
+
+// Cutoff is a "taken before" limit: an absolute date or timestamp, or an
+// age relative to now. The zero value means no limit.
+type Cutoff struct{ raw string }
+
+// ParseCutoff accepts "2026-09-01" (local midnight), an RFC 3339 timestamp,
+// or an age such as "90d" or "12w".
+func ParseCutoff(s string) (Cutoff, error) {
+	s = strings.TrimSpace(s)
+	c := Cutoff{raw: s}
+	if s == "" {
+		return c, nil
+	}
+	if _, err := c.at(time.Now()); err != nil {
+		return Cutoff{}, err
+	}
+	return c, nil
+}
+
+// Before returns the instant assets must be taken before, relative to now.
+// ok is false when no limit is set.
+func (c Cutoff) Before(now time.Time) (t time.Time, ok bool) {
+	if c.raw == "" {
+		return time.Time{}, false
+	}
+	t, _ = c.at(now)
+	return t, true
+}
+
+func (c Cutoff) at(now time.Time) (time.Time, error) {
+	if t, err := time.ParseInLocation("2006-01-02", c.raw, time.Local); err == nil {
+		return t, nil
+	}
+	if t, err := time.Parse(time.RFC3339, c.raw); err == nil {
+		return t, nil
+	}
+	if n := len(c.raw); n >= 2 {
+		days := 0
+		switch c.raw[n-1] {
+		case 'd':
+			days = 1
+		case 'w':
+			days = 7
+		}
+		if v, err := strconv.Atoi(c.raw[:n-1]); err == nil && days > 0 && v >= 0 {
+			return now.AddDate(0, 0, -v*days), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("invalid taken_before %q: use a date (2026-09-01), a timestamp (RFC 3339) or an age (90d, 12w)", c.raw)
+}
+
+func (c Cutoff) String() string { return c.raw }
+
+// Set and Type implement pflag.Value.
+func (c *Cutoff) Set(v string) error {
+	p, err := ParseCutoff(v)
+	if err != nil {
+		return err
+	}
+	*c = p
+	return nil
+}
+
+func (c *Cutoff) Type() string { return "date|age" }
+
+func (c *Cutoff) UnmarshalYAML(n *yaml.Node) error { return c.Set(n.Value) }
+
+func (c Cutoff) MarshalYAML() (any, error) { return c.raw, nil }
+
+// Describe renders the cutoff for messages, e.g. "2026-09-01" or
+// "90d (2026-07-09)".
+func (c Cutoff) Describe(now time.Time) string {
+	t, ok := c.Before(now)
+	if !ok {
+		return "no limit"
+	}
+	d := t.Local().Format("2006-01-02 15:04")
+	if strings.HasSuffix(c.raw, "d") || strings.HasSuffix(c.raw, "w") {
+		return c.raw + " (" + d + ")"
+	}
+	return d
 }

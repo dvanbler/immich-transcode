@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -18,6 +19,7 @@ type runFlags struct {
 	limit         int
 	assets        []string
 	minSize       config.Size
+	takenBefore   config.Cutoff
 	crf           int
 	crfExplicit   bool
 }
@@ -37,6 +39,12 @@ from the validated encode.`,
 			if !cmd.Flags().Changed("min-size") {
 				f.minSize = a.cfg.MinSize
 			}
+			if !cmd.Flags().Changed("taken-before") {
+				f.takenBefore = a.cfg.TakenBefore
+			}
+			if _, ok := f.takenBefore.Before(time.Now()); ok && len(f.assets) == 0 {
+				a.console.Printf("Only videos taken before %s (taken_before)", f.takenBefore.Describe(time.Now()))
+			}
 			f.crfExplicit = cmd.Flags().Changed("crf")
 			if !f.crfExplicit {
 				f.crf = a.cfg.CRF
@@ -46,7 +54,7 @@ from the validated encode.`,
 				if len(f.assets) > 0 {
 					return f.assets, nil
 				}
-				cands, _, err := findCandidates(ctx, s, int64(f.minSize))
+				cands, _, err := findCandidates(ctx, s, int64(f.minSize), f.takenBefore)
 				if err != nil {
 					return nil, err
 				}
@@ -73,6 +81,7 @@ from the validated encode.`,
 	fl.IntVar(&f.limit, "limit", 0, "process at most N assets (0 = no limit)")
 	fl.StringSliceVar(&f.assets, "asset", nil, "process only this asset id (repeatable)")
 	fl.Var(&f.minSize, "min-size", "only consider videos at least this large (e.g. 200MB; config min_size)")
+	fl.Var(&f.takenBefore, "taken-before", "only consider videos taken before a date (2026-09-01) or older than an age (90d); config taken_before")
 	fl.IntVar(&f.crf, "crf", 0, "x265 CRF (default from config, 26); also re-encodes existing local encodes made at another CRF")
 	fl.BoolVar(&f.allowFaceLoss, "allow-face-loss", false, "replace videos even if named people will lose their face assignments")
 	fl.BoolVar(&f.retryFailed, "retry-failed", false, "also retry assets that failed in an earlier run")

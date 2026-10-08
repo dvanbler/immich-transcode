@@ -27,6 +27,10 @@ crf: 26
 preset: slow
 min_savings_percent: 25   # keep the original unless the encode is at least this much smaller
 min_size: 100MB           # ignore smaller videos
+# Only consider videos taken before a date or older than an age. Use it to
+# skip videos still on a phone: set it to the date you last used "Free up
+# space" in the Immich app. Empty means no limit.
+# taken_before: 2026-09-01   # or e.g. 90d, 12w
 concurrency: 1            # assets processed at once (each runs one ffmpeg)
 metadata_timeout: 10m     # wait for Immich to extract metadata from an upload
 

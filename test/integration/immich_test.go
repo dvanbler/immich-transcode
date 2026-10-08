@@ -226,6 +226,18 @@ func TestEndToEnd(t *testing.T) {
 	}
 	backup := tl.backup
 
+	// taken_before filters on when a video was taken, not uploaded: every
+	// fixture was uploaded today, but the portrait was taken in 2021 and the
+	// HDR clip in 2023.
+	cut := cli("scan", "--limit", "0", "--taken-before", "2022-01-01")
+	if !strings.Contains(cut, ids["portrait"]) || strings.Contains(cut, ids["hdr"]) {
+		t.Errorf("--taken-before 2022-01-01: portrait listed %v (want true), HDR listed %v (want false)",
+			strings.Contains(cut, ids["portrait"]), strings.Contains(cut, ids["hdr"]))
+	}
+	if all := cli("scan", "--limit", "0", "--taken-before", "0d"); !strings.Contains(all, ids["hdr"]) {
+		t.Error("--taken-before 0d (now) left out the HDR clip")
+	}
+
 	scan := cli("scan", "--limit", "0")
 	for _, name := range []string{"portrait", "fullrange", "people"} {
 		if !strings.Contains(scan, ids[name]) {
@@ -539,7 +551,7 @@ func TestPartnerVideosUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 	seen := false
-	if err := adminClient.SearchVideos(ctx, 1_000_000, func(page []immich.Asset) error {
+	if err := adminClient.SearchVideos(ctx, 1_000_000, nil, func(page []immich.Asset) error {
 		for _, a := range page {
 			seen = seen || a.Id.String() == partnerAsset
 		}

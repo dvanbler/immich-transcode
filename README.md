@@ -85,6 +85,26 @@ ten different videos. An existing encode keeps its CRF even if the config's
 `crf` changes. Passing `--crf` explicitly re-encodes it from the backup at the
 new value. The output shows the CRF of each result.
 
+### Videos still on a phone
+
+The tool never touches phones, but a phone that still has a video can
+upload it again. Once the replaced original is emptied from the Immich trash,
+the Immich app no longer sees the phone's copy as backed up, so auto-backup
+uploads it again: you end up with both versions in Immich and lose the
+saving.
+
+To avoid that, only transcode videos the phones no longer have:
+
+1. In the Immich app, use "Free up space" first, while the originals are
+   still on the server (afterwards the app no longer counts them as backed
+   up and won't remove them).
+2. Set `taken_before` to that date, in the config file or with
+   `--taken-before 2026-09-01` on `scan` and `run`. An age such as `90d`
+   also works. Explicit `--asset` ids are not limited by it.
+
+Immich filters by the date a video was taken, not when it was uploaded.
+`scan` and `run` print the cutoff in use.
+
 ### Checking finished replacements
 
 `verify` downloads each `done` replacement from Immich and runs the

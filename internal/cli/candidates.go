@@ -3,7 +3,9 @@ package cli
 import (
 	"context"
 	"sort"
+	"time"
 
+	"immich-transcode/internal/config"
 	"immich-transcode/internal/immich"
 	"immich-transcode/internal/manifest"
 	"immich-transcode/internal/selection"
@@ -24,7 +26,11 @@ type exclusion struct {
 // findCandidates pages through the library and applies the API-data
 // pre-filter, returning candidates ranked by estimated savings and counts of
 // excluded assets by reason.
-func findCandidates(ctx context.Context, s *session, minSize int64) ([]candidate, []exclusion, error) {
+func findCandidates(ctx context.Context, s *session, minSize int64, cutoff config.Cutoff) ([]candidate, []exclusion, error) {
+	var takenBefore *time.Time
+	if t, ok := cutoff.Before(time.Now()); ok {
+		takenBefore = &t
+	}
 	states, err := s.store.States(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -35,8 +41,14 @@ func findCandidates(ctx context.Context, s *session, minSize int64) ([]candidate
 	}
 	excluded := map[string]int{}
 	var out []candidate
-	err = s.client.SearchVideos(ctx, minSize, func(page []immich.Asset) error {
+	err = s.client.SearchVideos(ctx, minSize, takenBefore, func(page []immich.Asset) error {
 		for _, a := range page {
+			// The server filters on this too; checked again so a change in
+			// what the server's takenAt means can only skip more, not less.
+			if takenBefore != nil && !a.FileCreatedAt.Before(*takenBefore) {
+				excluded["taken after the taken_before cutoff"]++
+				continue
+			}
 			if _, ok := replacements[a.Id.String()]; ok {
 				// Already HEVC from this tool; redo works from the backup.
 				excluded["uploaded by immich-transcode (replacement or restore)"]++
