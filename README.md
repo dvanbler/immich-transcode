@@ -137,6 +137,49 @@ check.
 `reset` also accepts `failed` and specific `--asset` ids. Assets that are
 `done` can't be reset.
 
+### Fixing a failed asset
+
+First see why it failed:
+
+```sh
+immich-transcode status --state failed
+```
+
+The DETAIL column shows the error; `<backup_dir>/immich-transcode.log` has
+the full story. Then pick one of two fixes.
+
+**Retry from where it stopped**, for temporary problems: network errors,
+server timeouts, Ctrl-C, or the timeline check not settling in time.
+
+```sh
+immich-transcode resume --retry-failed           # dry run
+immich-transcode resume --retry-failed --apply   # finish it
+```
+
+This continues from the last step that succeeded, reusing the backup and the
+encode. If the failure came after the upload, the new asset has already been
+moved to the trash and the original kept, so the retry uploads again. Immich
+recognizes the same file in the trash and the tool restores it rather than
+creating a copy.
+
+**Start over**, when the encode itself was bad, i.e. the error mentions
+validation: "does not decode cleanly", "share a timestamp", "packet count",
+"duration" and similar. A retry would re-check the same bad file and fail
+again.
+
+```sh
+immich-transcode reset --asset <id>
+immich-transcode resume --apply
+```
+
+`reset` sends the asset back to `pending`. The next run verifies the
+existing backup by checksum (no download) and encodes again from scratch.
+
+**If the error says "ROLLBACK FAILED"**, the tool couldn't move the new asset
+to the trash after the failure, so it's still in the library next to the
+original. Check that asset in Immich (the error names it) and trash it by
+hand before retrying.
+
 ### Ctrl-C
 
 The first Ctrl-C lets the current step finish and then stops. A second one
@@ -177,8 +220,8 @@ is uploaded, and the names are logged. Rerun with `--allow-face-loss` to
 proceed, then reassign those people in Immich.
 
 **Failures after upload.** The new asset is moved to the trash, the original
-is left untouched, and the asset is marked `failed` with the error. Rerun with
-`--retry-failed` to try again.
+is left untouched, and the asset is marked `failed` with the error. See
+[Fixing a failed asset](#fixing-a-failed-asset).
 
 Logs: a JSON log goes to `<backup_dir>/immich-transcode.log` (`log_file` to
 change). The console prints one line per asset and a total at the end.
