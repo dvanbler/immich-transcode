@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -59,5 +60,37 @@ func TestLoad(t *testing.T) {
 	}
 	if _, err := Load(filepath.Join(dir, "missing.yaml"), true); err == nil {
 		t.Error("required missing file accepted")
+	}
+}
+
+// TestYAMLRoundTrip checks that the config command's output is a valid
+// config file describing the same settings.
+func TestYAMLRoundTrip(t *testing.T) {
+	c := Default()
+	c.ServerURL = "https://photos.example"
+	c.BackupDir = "/mnt/backup"
+	c.MinSize = 25 * MB
+	c.Preset = "medium"
+	c.BPP.H264 = 0.2
+	c.APIKey = "secret"
+	if err := c.Finalize(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := c.YAML()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "secret") {
+		t.Fatal("API key in output")
+	}
+	p := filepath.Join(t.TempDir(), "c.yaml")
+	os.WriteFile(p, out, 0o644)
+	t.Setenv(APIKeyEnv, "secret")
+	got, err := Load(p, true)
+	if err != nil {
+		t.Fatalf("output does not load: %v\n%s", err, out)
+	}
+	if got != c {
+		t.Errorf("round trip changed settings:\n%+v\n%+v\n%s", got, c, out)
 	}
 }

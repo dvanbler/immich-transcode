@@ -64,6 +64,10 @@ through, dry-run encodes awaiting `--apply`, and `pending` assets such as
 those sent back by `reset`. It never starts new videos. To commit exactly
 what a dry run validated, use `resume --apply`.
 
+`immich-transcode config` prints the effective settings (defaults, then the
+config file, then any flags) as config-file YAML, and says whether
+`IMMICH_API_KEY` is set without showing it.
+
 Every setting in the config file can also be set by a flag (`--server`,
 `--backup-dir`, `--work-dir`, `--preset`, `--concurrency`, `--ffmpeg`, ...).
 `run` also accepts `--crf`, `--min-size 500MB`, `--asset <id>` (repeatable),

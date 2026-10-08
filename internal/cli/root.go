@@ -22,6 +22,7 @@ import (
 
 type app struct {
 	configPath string
+	loadedPath string // config file actually read ("" if none existed)
 	cfg        config.Config
 	console    *logging.Console
 
@@ -62,7 +63,7 @@ The API key is read from the ` + config.APIKeyEnv + ` environment variable.`,
 	f.StringVar(&a.preset, "preset", "", "x265 preset")
 	f.IntVar(&a.concurrency, "concurrency", 0, "number of assets transcoded at once")
 
-	root.AddCommand(a.scanCmd(), a.runCmd(), a.statusCmd(), a.resumeCmd(), a.resetCmd(), a.verifyCmd(), a.redoCmd(), a.restoreCmd())
+	root.AddCommand(a.scanCmd(), a.runCmd(), a.statusCmd(), a.resumeCmd(), a.resetCmd(), a.verifyCmd(), a.redoCmd(), a.restoreCmd(), a.configCmd())
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
@@ -78,6 +79,9 @@ func (a *app) loadConfig(cmd *cobra.Command) error {
 	cfg, err := config.Load(path, required)
 	if err != nil {
 		return err
+	}
+	if _, err := os.Stat(path); err == nil {
+		a.loadedPath = path
 	}
 	set := func(name string, dst *string, v string) {
 		if cmd.Flags().Changed(name) {

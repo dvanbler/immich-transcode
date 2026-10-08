@@ -208,6 +208,24 @@ func (s *Size) UnmarshalYAML(n *yaml.Node) error {
 	return s.Set(n.Value)
 }
 
+// MarshalYAML writes a size the way UnmarshalYAML reads it ("25.00 MB").
+func (s Size) MarshalYAML() (any, error) {
+	return s.String(), nil
+}
+
+// YAML renders the settings as a config file. The API key is never
+// included (it is read only from the environment).
+func (c Config) YAML() ([]byte, error) {
+	var b bytes.Buffer
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(2)
+	if err := enc.Encode(c); err != nil {
+		return nil, err
+	}
+	err := enc.Close()
+	return b.Bytes(), err
+}
+
 // HumanBytes formats n with decimal units, e.g. "1.23 GB".
 func HumanBytes(n int64) string {
 	neg := n < 0
