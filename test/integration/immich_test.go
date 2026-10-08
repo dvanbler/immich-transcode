@@ -393,9 +393,50 @@ func TestEndToEnd(t *testing.T) {
 		if out, err := tl.run("verify", "--asset", ids["portrait"]); err != nil || !strings.Contains(out, ": ok") {
 			t.Errorf("verify after redo: %v", err)
 		}
+		// Put the backup back: the original is still in the trash, so it is
+		// restored itself, with everything from the current replacement.
+		if plan, err := tl.run("restore", "--asset", ids["portrait"]); err != nil || !strings.Contains(plan, "still in the Immich trash") {
+			t.Errorf("restore plan: %v", err)
+		}
+		if a, _ := client.GetAsset(ctx, ids["portrait"]); a == nil || !a.IsTrashed {
+			t.Fatal("restore plan changed something")
+		}
+		if out, err := tl.run("restore", "--asset", ids["portrait"], "--apply"); err != nil {
+			t.Fatalf("restore: %v\n%s", err, out)
+		}
+		r3, _, _ := store.Get(ctx, ids["portrait"])
+		orig, err := client.GetAsset(ctx, ids["portrait"])
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch {
+		case r3.State != manifest.Restored || r3.NewAssetID != ids["portrait"]:
+			t.Errorf("after restore: state %s asset %s", r3.State, r3.NewAssetID)
+		case orig.IsTrashed:
+			t.Error("original still in trash")
+		case !orig.LocalDateTime.Equal(before.LocalDateTime):
+			t.Errorf("restored localDateTime %v", orig.LocalDateTime)
+		case orig.ExifInfo.Description == nil || *orig.ExifInfo.Description != desc || !orig.IsFavorite:
+			t.Error("restored original lost description or favorite")
+		}
+		if a, _ := client.GetAsset(ctx, r2.NewAssetID); a == nil || !a.IsTrashed {
+			t.Error("replacement not trashed after restore")
+		}
+		if fi, err := os.Stat(r3.BackupPath); err != nil || fi.Size() != r3.OriginalSize {
+			t.Error("backup missing after restore")
+		}
+		api.do("POST", "/search/metadata", map[string]any{"filter": map[string]any{"albumIds": map[string]any{"any": []string{album.ID}}}}, &inAlbum)
+		found = false
+		for _, a := range inAlbum.Assets.Items {
+			found = found || a.ID == ids["portrait"]
+		}
+		if !found {
+			t.Error("restored original not in album")
+		}
+
 		// Replacements are never offered as new candidates.
 		scan2, _ := tl.run("scan", "--limit", "0")
-		if strings.Contains(scan2, r2.NewAssetID) || !strings.Contains(scan2, "replacement made by immich-transcode") {
+		if strings.Contains(scan2, r2.NewAssetID) || strings.Contains(scan2, ids["portrait"]) || !strings.Contains(scan2, "uploaded by immich-transcode") {
 			t.Error("scan offered a replacement as a candidate")
 		}
 	}

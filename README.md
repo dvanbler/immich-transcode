@@ -54,6 +54,7 @@ immich-transcode resume --apply            # replace exactly those validated vid
 immich-transcode reset --state skipped_corrupt   # re-check skipped assets
 immich-transcode verify                    # re-check done replacements as stored in Immich
 immich-transcode redo --asset <id> --apply # re-encode one from its backup and replace it
+immich-transcode restore --asset <id>      # put the original back (add --apply)
 ```
 
 `run` searches Immich for candidates and picks the best by estimated
@@ -106,6 +107,21 @@ If the fresh encode is byte-identical to the current replacement (same
 ffmpeg and settings), nothing is uploaded and the current replacement is
 kept. Replacements made by this tool are never offered as candidates by
 `scan` or `run`.
+
+### Putting an original back
+
+`restore --asset <id>` puts the backup of a `done` asset's original back in
+Immich, in place of its replacement. Without `--apply` it only shows what
+would happen.
+
+If the original is still in the Immich trash (30 days by default), it is
+restored from there, including its face assignments. Otherwise the backup is
+uploaded as a new asset, without face assignments. Either way, albums,
+favorite, shared links, stack, description, rating, tags and date are copied
+from the current replacement. The timeline is checked before the
+replacement is moved to the trash. The backup file is never moved or
+deleted, and restored assets end in the `restored` state, so `scan` and
+`run` don't select them again.
 
 ### Re-checking skipped assets
 

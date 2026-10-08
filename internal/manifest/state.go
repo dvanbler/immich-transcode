@@ -23,6 +23,7 @@ const (
 	Trashed        State = "trashed"         // original moved to Immich trash
 
 	Done           State = "done"
+	Restored       State = "restored" // backup put back in place of the replacement
 	SkippedCorrupt State = "skipped_corrupt"
 	SkippedHDR     State = "skipped_hdr"
 	SkippedCodec   State = "skipped_codec"
@@ -51,7 +52,7 @@ var rank = func() map[State]int {
 // NeedsConfirm (with --allow-face-loss) and Failed (with --retry-failed).
 func (s State) Terminal() bool {
 	switch s {
-	case Done, SkippedCorrupt, SkippedHDR, SkippedCodec, SkippedEff,
+	case Done, Restored, SkippedCorrupt, SkippedHDR, SkippedCodec, SkippedEff,
 		SkippedLowGain, SkippedOther, NeedsConfirm, Failed:
 		return true
 	}
@@ -97,6 +98,11 @@ func CheckTransition(from, to State) error {
 	if to == Done && from == Trashed {
 		return nil
 	}
+	// Restore: a done asset's backup is uploaded in place of its replacement,
+	// continuing from the upload step (see the restore command).
+	if from == Done && to == Validated {
+		return nil
+	}
 	// Redo whose fresh encode is byte-identical to the current replacement:
 	// nothing is uploaded or trashed, the asset is simply done again.
 	if from == Validated && to == Done {
@@ -109,7 +115,7 @@ func CheckTransition(from, to State) error {
 	}
 	// Reset: a skipped or failed asset is re-evaluated from the start
 	// (e.g. after a check was fixed or thresholds changed).
-	if to == Pending && from.Terminal() && from != Done && from != NeedsConfirm {
+	if to == Pending && from.Terminal() && from != Done && from != Restored && from != NeedsConfirm {
 		return nil
 	}
 	// Retrying: a failed or needs_confirm asset resumes from a progress

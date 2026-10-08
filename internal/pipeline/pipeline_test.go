@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha1"
 	"encoding/base64"
@@ -957,5 +958,80 @@ func TestRedoIdenticalEncodeKeepsReplacement(t *testing.T) {
 	if o.State != manifest.Done || rec.NewAssetID != first || rec.SourceAssetID != "" ||
 		e.fake.uploads != uploads || e.fake.assets[first].IsTrashed {
 		t.Fatalf("outcome %+v record %+v uploads %d", o, rec, e.fake.uploads)
+	}
+}
+
+// restoreSetup processes a clip to done, then edits its replacement the way
+// a user might afterwards.
+func restoreSetup(t *testing.T) (*env, string, manifest.Record) {
+	e := setup(t)
+	e.proc.Opts.Apply = true
+	id := e.fake.add(e.set.Portrait.Path)
+	if o := e.proc.Process(context.Background(), id); o.State != manifest.Done {
+		t.Fatalf("first run: %+v", o)
+	}
+	rec := e.state(id)
+	later := "edited on the replacement"
+	e.fake.assets[rec.NewAssetID].ExifInfo.Description = &later
+	e.fake.albums[rec.NewAssetID] = append(e.fake.albums[rec.NewAssetID], "Added later")
+	return e, id, rec
+}
+
+func checkRestored(t *testing.T, e *env, id, repl, restoredID string) {
+	t.Helper()
+	rec := e.state(id)
+	a := e.fake.assets[restoredID]
+	switch {
+	case rec.State != manifest.Restored:
+		t.Fatalf("state %s (%s)", rec.State, rec.Error)
+	case rec.NewAssetID != restoredID:
+		t.Errorf("restored asset %s, want %s", rec.NewAssetID, restoredID)
+	case a == nil || a.IsTrashed:
+		t.Error("restored asset missing or in trash")
+	case !e.fake.assets[repl].IsTrashed:
+		t.Error("replacement not trashed")
+	case a.ExifInfo.Description == nil || *a.ExifInfo.Description != "edited on the replacement":
+		t.Errorf("description %v not carried over from the replacement", a.ExifInfo.Description)
+	case len(e.fake.albums[restoredID]) != 2:
+		t.Errorf("albums %v not carried over", e.fake.albums[restoredID])
+	case !exists(rec.BackupPath):
+		t.Error("backup deleted")
+	}
+	b1, _ := os.ReadFile(rec.BackupPath)
+	b2, _ := os.ReadFile(e.fake.files[restoredID])
+	if !bytes.Equal(b1, b2) {
+		t.Error("restored asset is not byte-identical to the backup")
+	}
+}
+
+func TestRestoreFromTrash(t *testing.T) {
+	e, id, rec := restoreSetup(t)
+	repl := rec.NewAssetID
+	if err := e.store.MarkRestore(context.Background(), &rec); err != nil {
+		t.Fatal(err)
+	}
+	e.proc.Process(context.Background(), id)
+	// The original asset itself comes back (with its faces, in Immich).
+	checkRestored(t, e, id, repl, id)
+}
+
+func TestRestoreAfterTrashEmptied(t *testing.T) {
+	e, id, rec := restoreSetup(t)
+	repl := rec.NewAssetID
+	delete(e.fake.assets, id) // purged from the trash
+	uploads := e.fake.uploads
+	if err := e.store.MarkRestore(context.Background(), &rec); err != nil {
+		t.Fatal(err)
+	}
+	e.proc.Process(context.Background(), id)
+	newID := e.state(id).NewAssetID
+	if e.fake.uploads != uploads+1 || newID == "" {
+		t.Fatalf("backup not uploaded as a new asset: uploads %d new %q", e.fake.uploads, newID)
+	}
+	checkRestored(t, e, id, repl, newID)
+	// The re-uploaded original is never offered for transcoding again.
+	o := e.proc.Process(context.Background(), newID)
+	if o.Err == nil {
+		t.Error("restored upload was processed as a new original")
 	}
 }

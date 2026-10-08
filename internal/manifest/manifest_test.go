@@ -36,8 +36,12 @@ func TestTransitionRules(t *testing.T) {
 		{Copied, Failed, true},             //
 		{Failed, Validated, true},          // retry
 		{NeedsConfirm, Validated, true},    // --allow-face-loss
-		{Done, Pending, false},
-		{Done, Probed, true},            // redo             // done is final
+		{Done, Pending, false},             // done is final
+		{Done, Probed, true},               // redo
+		{Done, Validated, true},            // restore
+		{Trashed, Restored, true},          // restore finished
+		{Restored, Pending, false},         // reset would point at the trashed replacement
+		{Restored, Probed, false},
 		{SkippedHDR, Pending, true},     // reset
 		{Patched, Validated, true},      // rollback after remote failure
 		{Transcoded, Probed, true},      // rewind, work file lost
@@ -60,7 +64,7 @@ func TestStatePredicates(t *testing.T) {
 	if !Uploaded.Remote() || !Verified.Remote() || Validated.Remote() || Trashed.Remote() {
 		t.Error("Remote() wrong")
 	}
-	if !SkippedLowGain.Permanent() || Failed.Permanent() || NeedsConfirm.Permanent() || !Done.Permanent() {
+	if !SkippedLowGain.Permanent() || Failed.Permanent() || NeedsConfirm.Permanent() || !Done.Permanent() || !Restored.Permanent() {
 		t.Error("Permanent() wrong")
 	}
 	if Pending.InProgress() || Done.InProgress() || !Transcoded.InProgress() || Failed.InProgress() {

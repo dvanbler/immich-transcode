@@ -258,6 +258,9 @@ func (p *Processor) finish(out Outcome, rec manifest.Record) Outcome {
 	out.OldSize, out.NewSize = rec.OriginalSize, rec.NewSize
 	out.State = rec.State
 	switch {
+	case out.State == manifest.Restored:
+		p.Console.Printf("%s: original restored (%s); replacement %s moved to trash", out.FileName,
+			config.HumanBytes(rec.OriginalSize), rec.SourceAssetID)
 	case out.State == manifest.Done:
 		p.Console.Printf("%s: %s → %s (%.1f%% saved, crf %d) done", out.FileName,
 			config.HumanBytes(out.OldSize), config.HumanBytes(out.NewSize), pct(out.OldSize, out.NewSize), rec.CRF)

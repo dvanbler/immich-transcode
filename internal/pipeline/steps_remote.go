@@ -51,7 +51,7 @@ func (p *Processor) faceGate(ctx context.Context, rec *manifest.Record) (bool, s
 }
 
 func (p *Processor) upload(ctx context.Context, rec *manifest.Record, asset *immich.Asset) (manifest.State, string, error) {
-	if rec.SourceAssetID != "" {
+	if rec.SourceAssetID != "" && rec.Mode != manifest.ModeRestore {
 		// Redo: if the fresh encode is byte-identical to the current
 		// replacement (same ffmpeg and settings), there is nothing to
 		// replace. Keep the current one.
@@ -79,6 +79,9 @@ func (p *Processor) upload(ctx context.Context, rec *manifest.Record, asset *imm
 		return "", "", err
 	}
 	name := media.OutputName(asset.OriginalFileName, media.ContainerFor(asset.OriginalFileName))
+	if rec.Mode == manifest.ModeRestore {
+		name = rec.FileName // the backup is the original file, under its own name
+	}
 	var sent atomic.Int64
 	stop := p.ticker(func() string {
 		return fmt.Sprintf("%s: uploading %s", rec.FileName, progressText(sent.Load(), rec.NewSize))
@@ -113,9 +116,13 @@ func (p *Processor) upload(ctx context.Context, rec *manifest.Record, asset *imm
 }
 
 func (p *Processor) adoptDuplicate(ctx context.Context, rec *manifest.Record, id string) error {
-	if id == rec.AssetID || id == rec.Source() {
-		return fmt.Errorf("server reports the transcode as a duplicate of the asset it replaces")
+	restoringOriginal := rec.Mode == manifest.ModeRestore && id == rec.AssetID
+	if id == rec.Source() || (id == rec.AssetID && !restoringOriginal) {
+		return fmt.Errorf("server reports the upload as a duplicate of the asset it replaces")
 	}
+	// A restore whose original is still in the trash lands here: the backup
+	// has the original's checksum. Restoring it brings back the original
+	// asset, including its face assignments.
 	rctx, cancel := remoteCtx(ctx)
 	defer cancel()
 	dup, err := p.Immich.GetAsset(rctx, id)
@@ -379,7 +386,16 @@ func (p *Processor) trashOriginal(ctx context.Context, rec *manifest.Record) (ma
 }
 
 func (p *Processor) complete(rec *manifest.Record) (manifest.State, string, error) {
-	if rec.OutputPath != "" {
+	if rec.Mode == manifest.ModeRestore {
+		// OutputPath is the backup itself: never delete it.
+		rec.OutputPath = ""
+		how := "uploaded the backup as " + rec.NewAssetID
+		if rec.NewAssetID == rec.AssetID {
+			how = "restored the original from the trash"
+		}
+		return manifest.Restored, how, nil
+	}
+	if rec.OutputPath != "" && rec.OutputPath != rec.BackupPath {
 		if err := os.Remove(rec.OutputPath); err != nil && !os.IsNotExist(err) {
 			p.Log.Warn("could not remove work file", "path", rec.OutputPath, "err", err)
 		}

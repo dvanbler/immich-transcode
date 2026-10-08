@@ -39,7 +39,7 @@ func findCandidates(ctx context.Context, s *session, minSize int64) ([]candidate
 		for _, a := range page {
 			if _, ok := replacements[a.Id.String()]; ok {
 				// Already HEVC from this tool; redo works from the backup.
-				excluded["replacement made by immich-transcode"]++
+				excluded["uploaded by immich-transcode (replacement or restore)"]++
 				continue
 			}
 			if reason := exclude(a, s.userID, states[a.Id.String()]); reason != "" {
