@@ -1,17 +1,35 @@
 # immich-transcode
 
+**Shrink the videos in your Immich library without losing anything.**
+
 > **Note:** this utility was written with an AI coding assistant rather than
 > by hand. It has been tested on a real Immich library with tens
 > of thousands of photos and videos, but review what it does before running
 > it with `--apply` on your own library, and keep the backups it makes.
 
-Finds large, inefficiently encoded videos in an Immich v3 library and replaces
-each with an HEVC (x265) re-encode. For every video it keeps a verified local
-backup of the original, and it preserves the timeline date, location, albums,
-favorites, description, rating, tags, visibility, shared links and stacks.
+Phones record video at a fixed, high bitrate whatever is in the scene, so
+videos often take up most of an Immich library's disk space. immich-transcode
+finds the large, inefficiently encoded ones and replaces each with an HEVC
+(x265) re-encode that aims for similar visual quality. On real phone videos the savings
+ranged from about a third to over 90% per video, depending on the content.
 
-The default is a dry run: nothing is uploaded or deleted without `--apply`, and
-originals are only ever moved to the Immich trash, never purged.
+Each video is replaced in place, as if it had always been the smaller file:
+
+- **Nothing is lost from Immich.** The timeline date, location, albums,
+  favorites, description, rating, tags, archive status, shared links and
+  stacks carry over to the replacement.
+- **Every original is backed up** locally and checked against Immich's
+  checksum before anything changes. Originals are only moved to the Immich
+  trash, never deleted.
+- **Every re-encode is checked before upload**: it must decode cleanly and
+  match the original's duration, frame count, orientation, date and GPS.
+- **Dry run by default.** Nothing is uploaded or trashed without `--apply`.
+- **Undoable.** `verify` re-checks finished replacements, `redo` re-encodes
+  one from its backup, and `restore` puts the original back.
+
+Works with Immich v3 (tested on v3.2.4 and v3.3.1). Used on Linux; builds
+are also provided for macOS and Windows. It's an independent community tool,
+not part of the Immich project.
 
 ## Requirements
 
