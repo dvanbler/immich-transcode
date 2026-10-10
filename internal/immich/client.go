@@ -24,7 +24,7 @@ import (
 )
 
 // SpecVersion is the Immich version whose OpenAPI spec generated api.
-const SpecVersion = "3.2.4"
+const SpecVersion = "3.3.1"
 
 // MinMajor is the lowest server major version supported.
 const MinMajor = 3
@@ -330,7 +330,7 @@ func (c *Client) CopyRelationships(ctx context.Context, from, to string) error {
 }
 
 // UpdateAsset applies a partial update. PUT /assets/{id} is marked deprecated
-// in the v3.2.4 spec but no replacement exists there yet.
+// in the v3.2.4 and v3.3.1 specs, with no replacement yet.
 func (c *Client) UpdateAsset(ctx context.Context, id string, dto api.UpdateAssetDto) error {
 	uid, err := parseID(id)
 	if err != nil {

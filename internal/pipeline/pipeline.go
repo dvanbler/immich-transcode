@@ -245,7 +245,7 @@ func (p *Processor) Process(ctx context.Context, id string) Outcome {
 			break
 		}
 		log.Info("step", "from", from, "to", to, "msg", msg, "took", time.Since(started).Round(time.Millisecond).String())
-		if to.Terminal() && to != manifest.Done {
+		if to.Terminal() && to != manifest.Done && to != manifest.Restored { // those get a summary line in finish
 			p.Console.Printf("%s: %s (%s)", asset.OriginalFileName, to, msg)
 		}
 	}

@@ -15,8 +15,8 @@ originals are only ever moved to the Immich trash, never purged.
 
 ## Requirements
 
-- Immich server **v3.0 or later**. The client is generated from the v3.2.4 API
-  spec and tested against v3.2.4.
+- Immich server **v3.0 or later**. The client is generated from the v3.3.1 API
+  spec and tested against v3.2.4 and v3.3.1.
 - `ffmpeg` and `ffprobe` with libx265, plus `exiftool`. The
   [BtbN static builds](https://github.com/BtbN/FFmpeg-Builds/releases) are
   recommended: they include libx265 and libvmaf. On Linux Mint,
@@ -248,9 +248,9 @@ change). The console prints one line per asset and a total at the end.
 
 ### Decisions and deviations from the original spec
 
-- **Asset update endpoint.** v3.2.4 has no non-deprecated replacement for
-  `PUT /api/assets/{id}`. Its deprecation notice points back to itself, and
-  the v3.3.0 release candidates don't add one either. Favorite and
+- **Asset update endpoint.** Neither v3.2.4 nor v3.3.1 has a non-deprecated
+  replacement for `PUT /api/assets/{id}`; its deprecation notice points back
+  to itself. Favorite and
   visibility are therefore sent with the upload. The update endpoint is only
   a fallback for description, rating, date and location, which no other
   endpoint can write. In testing these usually arrived through the file
@@ -291,8 +291,9 @@ state machine against an in-memory fake of Immich. They cover the dry run,
 apply, rollback and retry, needs_confirm, low gain, HDR, corrupt input, an
 interrupted encode and timeline mismatches.
 
-Integration tests run against a **throwaway** Immich v3.2.4 in Docker, with
-all data on tmpfs and the server on port 2299:
+Integration tests run against a **throwaway** Immich in Docker (the version
+pinned in `api/spec.mk`, currently v3.3.1), with all data on tmpfs and the
+server on port 2299:
 
 ```sh
 make immich-up && make integration && make immich-down
@@ -324,7 +325,7 @@ and SHA-256:
 
 ```sh
 make spec                                  # re-download the pinned spec and verify its checksum
-make spec-update IMMICH_VERSION=v3.3.0     # pin a newer release
+make spec-update IMMICH_VERSION=v3.4.0     # pin a newer release
 make generate && make test                 # then regenerate the client and test
 ```
 

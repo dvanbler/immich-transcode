@@ -96,6 +96,8 @@ func exclude(a immich.Asset, userID string, st manifest.State) string {
 		return "has edits (would be lost)"
 	case st == manifest.Done:
 		return "already done"
+	case st == manifest.Restored:
+		return "original restored by immich-transcode"
 	case st.Permanent():
 		return "skipped in an earlier run (" + string(st) + ")"
 	}

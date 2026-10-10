@@ -639,6 +639,27 @@ func (e Permission) Valid() bool {
 	}
 }
 
+// Defines values for PersonUserRole.
+const (
+	Admin PersonUserRole = "admin"
+	Read  PersonUserRole = "read"
+	Write PersonUserRole = "write"
+)
+
+// Valid indicates whether the value is a known member of the PersonUserRole enum.
+func (e PersonUserRole) Valid() bool {
+	switch e {
+	case Admin:
+		return true
+	case Read:
+		return true
+	case Write:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SearchOrderField.
 const (
 	FileCreatedAt   SearchOrderField = "fileCreatedAt"
@@ -1391,8 +1412,42 @@ type NumberFilterNullable struct {
 	NotIn *[]float64 `json:"notIn,omitempty"`
 }
 
+// PeopleUserResponseDto defines model for PeopleUserResponseDto.
+type PeopleUserResponseDto struct {
+	// AvatarColor User avatar color
+	AvatarColor UserAvatarColor `json:"avatarColor"`
+
+	// Email User email
+	Email openapi_types.Email `json:"email"`
+
+	// Id User ID
+	Id openapi_types.UUID `json:"id"`
+
+	// Name User name
+	Name string `json:"name"`
+
+	// ProfileChangedAt Profile change date
+	ProfileChangedAt time.Time `json:"profileChangedAt"`
+
+	// ProfileImagePath Profile image path
+	ProfileImagePath string `json:"profileImagePath"`
+
+	// Role Levels of access for managing people resources on behalf of another user.
+	Role PersonUserRole `json:"role"`
+}
+
 // Permission List of permissions
 type Permission string
+
+// PersonOtherResponseDto defines model for PersonOtherResponseDto.
+type PersonOtherResponseDto struct {
+	BirthDate *string `json:"birthDate"`
+	Name      string  `json:"name"`
+
+	// Role Levels of access for managing people resources on behalf of another user.
+	Role       PersonUserRole     `json:"role"`
+	SharedById openapi_types.UUID `json:"sharedById"`
+}
 
 // PersonResponseDto defines model for PersonResponseDto.
 type PersonResponseDto struct {
@@ -1412,7 +1467,14 @@ type PersonResponseDto struct {
 	IsHidden bool `json:"isHidden"`
 
 	// Name Person name
-	Name string `json:"name"`
+	Name        string                   `json:"name"`
+	OtherPeople []PersonOtherResponseDto `json:"otherPeople"`
+
+	// SharedBy Users that gave the current user access to this person
+	SharedBy []PeopleUserResponseDto `json:"sharedBy"`
+
+	// SharedWith Users the current user gave access to this person
+	SharedWith []PeopleUserResponseDto `json:"sharedWith"`
 
 	// ThumbnailPath Thumbnail path
 	ThumbnailPath string `json:"thumbnailPath"`
@@ -1420,6 +1482,9 @@ type PersonResponseDto struct {
 	// UpdatedAt Last update date
 	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
 }
+
+// PersonUserRole Levels of access for managing people resources on behalf of another user.
+type PersonUserRole string
 
 // SearchAlbumResponseDto defines model for SearchAlbumResponseDto.
 type SearchAlbumResponseDto struct {
