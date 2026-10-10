@@ -41,12 +41,84 @@ make build        # static binary, no cgo
 make dist         # linux/darwin/windows binaries in dist/
 ```
 
-## Usage
+## Configuration
+
+Settings come from a YAML config file, with command-line flags taking
+precedence. Start from the example in this repository.
+
+**1. Copy the example config** to the default location for your system:
 
 ```sh
-cp config.example.yaml ~/.config/immich-transcode/config.yaml   # then edit
-export IMMICH_API_KEY=...
+# Linux
+mkdir -p ~/.config/immich-transcode
+cp config.example.yaml ~/.config/immich-transcode/config.yaml
 
+# macOS
+mkdir -p ~/Library/Application\ Support/immich-transcode
+cp config.example.yaml ~/Library/Application\ Support/immich-transcode/config.yaml
+```
+
+On Windows the location is `%AppData%\immich-transcode\config.yaml`. A config
+file anywhere else works too: pass it with `--config <path>` on every command.
+
+**2. Edit it.** Two settings are required:
+
+- `server_url`: your Immich address, e.g. `https://photos.example.com`.
+- `backup_dir`: where the originals are backed up. The originals are kept,
+  never deleted, so this needs room for the full size of every video you
+  process. Use a disk that is itself backed up. The manifest, the log, and the
+  encodes waiting for upload (`work_dir`) go here too, unless you set them
+  separately.
+
+Everything else has a sensible default and is explained in the file. The ones
+most worth a look:
+
+- `taken_before`: skip videos that may still be on a phone (see
+  [Videos still on a phone](#videos-still-on-a-phone)).
+- `preset` and `crf`: encoding speed versus file size and quality. In
+  testing, `medium` was about 2.5× faster than the default `slow` at a similar
+  file size.
+- `min_size`: ignore videos smaller than this.
+
+Unknown keys are rejected, so a typo in a setting name is reported rather than
+silently ignored.
+
+**3. Set the API key.** It is read only from the `IMMICH_API_KEY` environment
+variable, never from the config file. Create it in Immich under Account
+Settings → API Keys, with the permissions listed under
+[Requirements](#requirements). To keep it out of your shell history, you can
+store it in a file only you can read:
+
+```sh
+echo 'your-key' > ~/.config/immich-transcode/api-key
+chmod 600 ~/.config/immich-transcode/api-key
+export IMMICH_API_KEY=$(cat ~/.config/immich-transcode/api-key)
+```
+
+**4. Check it.** `immich-transcode config` shows the settings the tool will
+use, which config file it read, and whether the API key is set (without
+showing it). `immich-transcode scan` then confirms the server address,
+server version and the read permissions without changing anything. The
+extra permissions for `--apply` are checked when you first run with
+`--apply`.
+
+**Several Immich users:** the tool processes only the videos of the user who
+owns the API key. For another user, make a second config file with its own
+`backup_dir`, so each user gets a separate manifest, and run with that user's
+key:
+
+```sh
+cp ~/.config/immich-transcode/config.yaml ~/.config/immich-transcode/partner.yaml
+# edit backup_dir (and taken_before) in partner.yaml
+IMMICH_API_KEY=$(cat ~/.config/immich-transcode/partner-key) \
+  immich-transcode --config ~/.config/immich-transcode/partner.yaml scan
+```
+
+## Usage
+
+After [configuring](#configuration) the tool:
+
+```sh
 immich-transcode scan                      # ranked candidates, read-only
 immich-transcode run --limit 3             # dry run: download, encode, validate
 immich-transcode status                    # manifest: state, savings, failures
