@@ -34,12 +34,23 @@ originals are only ever moved to the Immich trash, never purged.
   are excluded by owner. `tag.asset` is needed to put tags back on the
   replacement. At startup the tool lists any permissions that are missing.
 
-## Build
+## Install
+
+Download the binary for your system from the
+[releases page](https://github.com/dvanbler/immich-transcode/releases), check
+it against `SHA256SUMS` (`sha256sum -c SHA256SUMS --ignore-missing`), make it
+executable and put it on your PATH. `immich-transcode --version` shows which
+release you have.
+
+Or build from source (Go, no cgo):
 
 ```sh
-make build        # static binary, no cgo
-make dist         # linux/darwin/windows binaries in dist/
+make build        # ./immich-transcode
+make dist         # all platforms, plus SHA256SUMS, in dist/
 ```
+
+The version is stamped in from `git describe`: the tag on a release, e.g.
+`v0.1.0-3-gabc1234-dirty` between releases.
 
 ## Configuration
 
@@ -407,6 +418,22 @@ the server image in the integration test's compose file. The Postgres and
 Valkey images there are not updated; compare them with that release's
 `docker-compose.yml`. A unit test fails if the spec file, `api/spec.mk`,
 `SpecVersion` and the test server image ever disagree.
+
+## Making a release
+
+Push a version tag; GitHub Actions does the rest
+([.github/workflows/release.yml](.github/workflows/release.yml)):
+
+```sh
+git tag -a v0.1.0 -m "v0.1.0"
+git push origin v0.1.0
+```
+
+The workflow runs the unit tests and the integration tests against a
+throwaway Immich, builds the binaries for every platform with the tag as their
+version, and publishes a GitHub release with the binaries, `SHA256SUMS` and
+generated notes. If any test fails, nothing is published. Tags with a hyphen
+(`v0.2.0-rc.1`) become pre-releases.
 
 ## Not in v1
 

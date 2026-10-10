@@ -193,7 +193,7 @@ func (a *app) process(f runFlags, pick func(context.Context, *session) ([]string
 		mode = "APPLY"
 	}
 	a.console.Printf("\n%s: %d asset(s), crf %d, preset %s, concurrency %d\n", mode, len(ids), s.cfg.CRF, s.cfg.Preset, s.cfg.Concurrency)
-	s.log.Info("run start", "mode", mode, "assets", len(ids), "crf", s.cfg.CRF, "preset", s.cfg.Preset)
+	s.log.Info("run start", "version", a.version, "mode", mode, "assets", len(ids), "crf", s.cfg.CRF, "preset", s.cfg.Preset)
 
 	proc = &pipeline.Processor{
 		Cfg:     s.cfg,

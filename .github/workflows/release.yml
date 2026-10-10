@@ -1,0 +1,70 @@
+# Publishes a GitHub release when a version tag is pushed:
+#
+#   git tag -a v0.1.0 -m "v0.1.0" && git push origin v0.1.0
+#
+# Runs the unit tests and the integration tests against a throwaway Immich
+# (Docker) first; the release is only created if they pass. Tags with a
+# hyphen (v0.2.0-rc.1) become pre-releases.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the release and upload its files
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history and tags, for the release notes
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install ffmpeg and exiftool
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libimage-exiftool-perl
+          ffmpeg -hide_banner -version | head -1
+          exiftool -ver
+
+      - name: Unit tests
+        run: go test ./...
+
+      - name: Start throwaway Immich
+        run: make immich-up
+
+      - name: Integration tests
+        run: make integration
+
+      - name: Stop Immich
+        if: always()
+        run: make immich-down
+
+      - name: Build release binaries
+        run: make dist VERSION="$GITHUB_REF_NAME"
+
+      - name: Check the binary reports this version
+        run: |
+          got=$(./dist/immich-transcode-linux-amd64 --version)
+          echo "$got"
+          test "$got" = "immich-transcode $GITHUB_REF_NAME"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --notes "Requires ffmpeg and ffprobe with libx265, and exiftool (see the README). Download the binary for your system; SHA256SUMS lists their checksums." \
+            $prerelease

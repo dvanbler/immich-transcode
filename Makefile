@@ -1,5 +1,8 @@
 BIN := immich-transcode
-LDFLAGS := -s -w
+# Version stamped into the binary: the tag on a release, otherwise
+# e.g. v0.1.0-3-gabc1234-dirty. Override with `make VERSION=...`.
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -s -w -X main.version=$(VERSION)
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
 COMPOSE := docker compose -f test/integration/docker-compose.yml
 
@@ -27,13 +30,17 @@ spec-update:
 generate:
 	cd internal/immich/api && go generate ./...
 
+# Release binaries plus SHA256SUMS in dist/.
 dist:
+	@rm -rf dist
 	@for p in $(PLATFORMS); do \
 		os=$${p%/*}; arch=$${p#*/}; ext=; [ $$os = windows ] && ext=.exe; \
 		echo "$$os/$$arch"; \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags '$(LDFLAGS)' \
 			-o dist/$(BIN)-$$os-$$arch$$ext . || exit 1; \
 	done
+	@cd dist && if command -v sha256sum >/dev/null; then sha256sum immich-transcode-* ; else shasum -a 256 immich-transcode-* ; fi > SHA256SUMS
+	@echo "built $(VERSION) into dist/"
 
 immich-up:
 	$(COMPOSE) up -d --wait

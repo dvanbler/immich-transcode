@@ -21,6 +21,7 @@ import (
 )
 
 type app struct {
+	version    string
 	configPath string
 	loadedPath string // config file actually read ("" if none existed)
 	cfg        config.Config
@@ -33,11 +34,12 @@ type app struct {
 }
 
 // Execute runs the root command.
-func Execute() int {
-	a := &app{console: logging.NewConsole()}
+func Execute(stampedVersion string) int {
+	a := &app{console: logging.NewConsole(), version: resolveVersion(stampedVersion)}
 	root := &cobra.Command{
-		Use:   "immich-transcode",
-		Short: "Re-encode large, inefficient videos in an Immich library to HEVC",
+		Use:     "immich-transcode",
+		Version: a.version,
+		Short:   "Re-encode large, inefficient videos in an Immich library to HEVC",
 		Long: `immich-transcode finds large, inefficiently encoded videos in an Immich v3
 library and replaces each with an HEVC re-encode, keeping a verified local
 backup of the original and preserving timeline date, location, albums,
@@ -63,6 +65,7 @@ The API key is read from the ` + config.APIKeyEnv + ` environment variable.`,
 	f.StringVar(&a.preset, "preset", "", "x265 preset")
 	f.IntVar(&a.concurrency, "concurrency", 0, "number of assets transcoded at once")
 
+	root.SetVersionTemplate("immich-transcode {{.Version}}\n")
 	root.AddCommand(a.scanCmd(), a.runCmd(), a.statusCmd(), a.resumeCmd(), a.resetCmd(), a.verifyCmd(), a.redoCmd(), a.restoreCmd(), a.configCmd())
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -136,6 +139,7 @@ func (a *app) preflight(ctx context.Context, o preflightOpts) (*session, error) 
 		return nil, err
 	}
 	s := &session{cfg: cfg}
+	a.console.Printf("immich-transcode %s", a.version)
 	if o.needTools {
 		s.tools = media.Tools{FFmpeg: cfg.FFmpeg, FFprobe: cfg.FFprobe, ExifTool: cfg.ExifTool}
 		infos, err := s.tools.Check(ctx)
