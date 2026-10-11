@@ -110,6 +110,29 @@ docker run --rm -it \
   the container itself. Use the host's name or address instead, or add
   `--network host`.
 
+With Docker Compose, the same setup in a `compose.yaml`:
+
+```yaml
+services:
+  immich-transcode:
+    image: ghcr.io/dvanbler/immich-transcode:latest
+    user: "1000:1000"             # your uid:gid (`id -u`, `id -g`), so the backups are yours
+    environment:
+      - IMMICH_API_KEY            # passed through from your shell
+    volumes:
+      - ~/.config/immich-transcode:/config/immich-transcode:ro
+      # Same path on both sides: the manifest records full backup paths.
+      - /mnt/archive/immich-originals:/mnt/archive/immich-originals
+    # network_mode: host          # if server_url is localhost or only resolves on the host
+```
+
+It's a command, not a service that stays up, so use `run` rather than `up`:
+
+```sh
+docker compose run --rm immich-transcode scan
+docker compose run --rm immich-transcode run --apply
+```
+
 ## Configuration
 
 Settings come from a YAML config file, with command-line flags taking
