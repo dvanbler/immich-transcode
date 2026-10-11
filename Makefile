@@ -8,7 +8,7 @@ COMPOSE := docker compose -f test/integration/docker-compose.yml
 
 include api/spec.mk
 
-.PHONY: build test generate spec spec-update dist immich-up immich-down integration
+.PHONY: build test generate spec spec-update dist docker immich-up immich-down integration
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) .
@@ -41,6 +41,10 @@ dist:
 	done
 	@cd dist && if command -v sha256sum >/dev/null; then sha256sum immich-transcode-* ; else shasum -a 256 immich-transcode-* ; fi > SHA256SUMS
 	@echo "built $(VERSION) into dist/"
+
+# Local image for this machine's architecture (release images are multi-arch).
+docker:
+	docker build --build-arg VERSION=$(VERSION) -t $(BIN):$(VERSION) -t $(BIN):latest .
 
 immich-up:
 	$(COMPOSE) up -d --wait

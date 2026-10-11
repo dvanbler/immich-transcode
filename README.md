@@ -7,7 +7,7 @@
 > of thousands of photos and videos, but review what it does before running
 > it with `--apply` on your own library, and keep the backups it makes.
 
-Phones record video at a fixed, high bitrate whatever is in the scene, so
+Phones record video at a fixed, high bitrate no matter what is in the scene, so
 videos often take up most of an Immich library's disk space. immich-transcode
 finds the large, inefficiently encoded ones and replaces each with an HEVC
 (x265) re-encode that aims for similar visual quality. On real phone videos the savings
@@ -35,10 +35,10 @@ not part of the Immich project.
 
 - Immich server **v3.0 or later**. The client is generated from the v3.3.1 API
   spec and tested against v3.2.4 and v3.3.1.
-- `ffmpeg` and `ffprobe` with libx265, plus `exiftool`. The
-  [BtbN static builds](https://github.com/BtbN/FFmpeg-Builds/releases) are
-  recommended: they include libx265 and libvmaf. On Linux Mint,
-  `apt install ffmpeg libimage-exiftool-perl` also works.
+- `ffmpeg` and `ffprobe` with libx265, plus `exiftool`. On Debian, Ubuntu
+  or Linux Mint: `apt install ffmpeg libimage-exiftool-perl`. Elsewhere, the
+  [BtbN static builds](https://github.com/BtbN/FFmpeg-Builds/releases)
+  include libx265. The [Docker image](#docker) includes all of them.
 - An Immich API key in `IMMICH_API_KEY`, created under Account Settings → API
   Keys. It needs these permissions:
 
@@ -69,6 +69,46 @@ make dist         # all platforms, plus SHA256SUMS, in dist/
 
 The version is stamped in from `git describe`: the tag on a release, e.g.
 `v0.1.0-3-gabc1234-dirty` between releases.
+
+### Docker
+
+A Linux image for amd64 and arm64, with ffmpeg and exiftool included, is
+published with each release:
+
+```sh
+docker pull ghcr.io/dvanbler/immich-transcode:latest
+```
+
+Tags: `latest`, the version (`0.1.0`) and the minor series (`0.1`).
+Pre-releases are tagged with their version only. Build it yourself with
+`make docker`.
+
+Set up the config file as described under [Configuration](#configuration),
+then mount its directory and the `backup_dir`:
+
+```sh
+docker run --rm -it \
+  --user "$(id -u):$(id -g)" \
+  -e IMMICH_API_KEY \
+  -v ~/.config/immich-transcode:/config/immich-transcode:ro \
+  -v /mnt/archive/immich-originals:/mnt/archive/immich-originals \
+  ghcr.io/dvanbler/immich-transcode:latest scan
+```
+
+- The image reads its config from `/config/immich-transcode/config.yaml`.
+  `--config` works too, with a path inside the container.
+- **Mount `backup_dir` at the same path inside the container** as in the
+  config file. The manifest records the backup's full path. If the paths
+  differ, `verify`, `redo` and `restore` can't find the originals, and you
+  can't switch between the image and the binary.
+- Mount `work_dir`, `manifest` and `log_file` the same way, if you've set
+  them outside `backup_dir`.
+- `--user` makes the backups belong to you rather than to the image's default
+  user (uid 1000).
+- `-it` lets Ctrl-C reach the tool, so it stops cleanly.
+- `server_url` must be reachable from inside the container. `localhost` is
+  the container itself. Use the host's name or address instead, or add
+  `--network host`.
 
 ## Configuration
 
@@ -344,40 +384,12 @@ proceed, then reassign those people in Immich.
 is left untouched, and the asset is marked `failed` with the error. See
 [Fixing a failed asset](#fixing-a-failed-asset).
 
+Output format: `.mov` sources stay MOV and keep their filename; everything
+else becomes MP4 with a `.mp4` extension. Audio is copied, unless MP4 can't
+carry it (such as PCM from an MKV), in which case it's re-encoded to AAC.
+
 Logs: a JSON log goes to `<backup_dir>/immich-transcode.log` (`log_file` to
 change). The console prints one line per asset and a total at the end.
-
-### Decisions and deviations from the original spec
-
-- **Asset update endpoint.** Neither v3.2.4 nor v3.3.1 has a non-deprecated
-  replacement for `PUT /api/assets/{id}`; its deprecation notice points back
-  to itself. Favorite and
-  visibility are therefore sent with the upload. The update endpoint is only
-  a fallback for description, rating, date and location, which no other
-  endpoint can write. In testing these usually arrived through the file
-  metadata and the copied sidecar, and no update call was made.
-- **Output container and filename.** `.mov` sources stay MOV (iPhone files
-  keep their name); everything else becomes MP4 with a `.mp4` extension.
-  Audio is copied, except codecs MP4 can't carry (such as PCM from an MKV),
-  which are re-encoded to AAC.
-- **Rotation.** ffmpeg applies the display matrix to the pixels, so exiftool
-  is told not to copy `Rotation` back, which would rotate the video twice.
-  Validation checks the displayed size and orientation.
-- **GPS precision.** ffmpeg writes a 3GPP `loci` box whose fixed-point
-  coordinates are off by about 1 m, and exiftool's composite GPS (which Immich
-  reads) prefers it. The box is removed unless the original had one.
-- **Waiting for metadata extraction.** On v3.2.4, `hasMetadata` is already
-  true right after upload, before the time zone is set. The tool waits until
-  duration and dimensions appear, because they arrive in the same pass.
-  Without this the timeline check fails for any video whose time zone comes
-  from GPS.
-- **Extra exclusions.** Live-photo motion parts (hidden visibility) are
-  excluded: replacing them would break the link to the photo.
-  External-library assets are excluded because Immich re-imports them from
-  disk. Edited assets are excluded because their edits wouldn't carry over.
-- **Concurrency** runs N full pipelines in parallel. The optional download
-  prefetch was not built; with `concurrency > 1`, downloads overlap encodes
-  anyway.
 
 ## Tests
 
@@ -450,12 +462,6 @@ git push origin v0.1.0
 The workflow runs the unit tests and the integration tests against a
 throwaway Immich, builds the binaries for every platform with the tag as their
 version, and publishes a GitHub release with the binaries, `SHA256SUMS` and
-generated notes. If any test fails, nothing is published. Tags with a hyphen
-(`v0.2.0-rc.1`) become pre-releases.
-
-## Not in v1
-
-- Per-file CRF search against a VMAF target (as in ab-av1's crf-search)
-- Hardware encoders (VAAPI, QSV, NVENC)
-- AV1 output
-- HDR and 10-bit sources
+generated notes. It then pushes the [Docker image](#docker) for amd64 and arm64 to
+`ghcr.io`. If any test fails, nothing is published. Tags with a hyphen
+(`v0.2.0-rc.1`) become pre-releases and don't move the image's `latest` tag.

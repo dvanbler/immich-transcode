@@ -3,8 +3,9 @@
 #   git tag -a v0.1.0 -m "v0.1.0" && git push origin v0.1.0
 #
 # Runs the unit tests and the integration tests against a throwaway Immich
-# (Docker) first; the release is only created if they pass. Tags with a
-# hyphen (v0.2.0-rc.1) become pre-releases.
+# (Docker) first; the release and the container image are only published if
+# they pass. Tags with a hyphen (v0.2.0-rc.1) become pre-releases and don't
+# move the image's `latest` tag.
 name: Release
 
 on:
@@ -85,3 +86,51 @@ jobs:
             --generate-notes \
             --notes "Requires ffmpeg and ffprobe with libx265, and exiftool (see the README). Download the binary for your system; SHA256SUMS lists their checksums." \
             $prerelease
+
+  # Multi-arch image at ghcr.io/<owner>/immich-transcode, after the tests pass.
+  image:
+    needs: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write # push the image to ghcr.io
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # v1.2.3 → 1.2.3, 1.2, latest; v1.2.3-rc.1 → 1.2.3-rc.1 only.
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ github.ref_name }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Check the image reports this version
+        run: |
+          image=ghcr.io/${{ github.repository }}:${GITHUB_REF_NAME#v}
+          got=$(docker run --rm "$image" --version)
+          echo "$got"
+          test "$got" = "immich-transcode $GITHUB_REF_NAME"

@@ -1,0 +1,8 @@
+.git
+.github
+dist
+immich-transcode
+immich-transcode.exe
+*.db
+*.db-wal
+*.db-shm
