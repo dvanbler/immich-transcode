@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -86,6 +87,13 @@ type EncodeSettings struct {
 	SourceTimeBase string
 }
 
+// x265Params sizes the thread pool explicitly. x265 otherwise asks libnuma
+// for the CPU layout, which Docker's default seccomp profile blocks: it then
+// creates no pool at all and encodes about 2.5× slower.
+func x265Params() string {
+	return "log-level=error:pools=" + strconv.Itoa(runtime.NumCPU())
+}
+
 // TranscodeArgs builds the ffmpeg command line for an HEVC re-encode of in
 // to out. Progress is written as key=value lines to stdout.
 func TranscodeArgs(in, out string, p Probe, c Container, s EncodeSettings) []string {
@@ -94,7 +102,7 @@ func TranscodeArgs(in, out string, p Probe, c Container, s EncodeSettings) []str
 		"-i", in,
 		"-map", "0:v:0", "-map", "0:a?",
 		"-c:v", "libx265", "-preset", s.Preset, "-crf", strconv.Itoa(s.CRF),
-		"-x265-params", "log-level=error",
+		"-x265-params", x265Params(),
 		"-tag:v", "hvc1",
 	}
 	if p.Video.FullRange() {
