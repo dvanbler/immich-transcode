@@ -70,7 +70,7 @@ make dist         # all platforms, plus SHA256SUMS, in dist/
 ```
 
 The version is stamped in from `git describe`: the tag on a release, e.g.
-`v0.1.0-3-gabc1234-dirty` between releases.
+`v1.0.3-3-gabc1234-dirty` between releases.
 
 ### Docker
 
@@ -81,7 +81,7 @@ published with each release:
 docker pull ghcr.io/dvanbler/immich-transcode:latest
 ```
 
-Tags: `latest`, the version (`0.1.0`) and the minor series (`0.1`).
+Tags: `latest`, the version (`1.0.3`) and the minor series (`1.0`).
 Pre-releases are tagged with their version only. Build it yourself with
 `make docker`.
 
@@ -501,8 +501,8 @@ Push a version tag; GitHub Actions does the rest
 ([.github/workflows/release.yml](.github/workflows/release.yml)):
 
 ```sh
-git tag -a v0.1.0 -m "v0.1.0"
-git push origin v0.1.0
+git tag -a v1.1.0 -m "v1.1.0"
+git push origin v1.1.0
 ```
 
 The workflow runs the unit tests and the integration tests against a
@@ -510,4 +510,4 @@ throwaway Immich, builds the binaries for every platform with the tag as their
 version, and publishes a GitHub release with the binaries, `SHA256SUMS` and
 generated notes. It then pushes the [Docker image](#docker) for amd64 and arm64 to
 `ghcr.io`. If any test fails, nothing is published. Tags with a hyphen
-(`v0.2.0-rc.1`) become pre-releases and don't move the image's `latest` tag.
+(`v1.1.0-rc.1`) become pre-releases and don't move the image's `latest` tag.
