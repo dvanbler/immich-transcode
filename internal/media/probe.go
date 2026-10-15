@@ -268,3 +268,48 @@ func (t Tools) CountVideoPackets(ctx context.Context, path string) (int64, error
 	}
 	return n, nil
 }
+
+// ThumbnailWindow is how far into a video Immich looks for its thumbnail
+// frame. Immich decodes only intra frames, samples them to one frame per
+// second, and takes the first scene change in the first 20 seconds (or the
+// frame at 21 s), so keyframes after about 22 s don't affect it.
+const ThumbnailWindow = 30.0
+
+// KeyframeTimes returns the times of the first video stream's keyframes up
+// to within seconds, relative to the start of the file: the timestamps
+// ffmpeg uses for -force_key_frames.
+func (t Tools) KeyframeTimes(ctx context.Context, path string, within float64) ([]float64, error) {
+	out, _, err := runCapture(ctx, t.FFprobe, "-v", "error", "-select_streams", "v:0",
+		"-read_intervals", fmt.Sprintf("%%+%g", within),
+		"-show_entries", "packet=pts_time,flags:format=start_time", "-of", "json", path)
+	if err != nil {
+		return nil, err
+	}
+	return parseKeyframeTimes(out, within)
+}
+
+func parseKeyframeTimes(data []byte, within float64) ([]float64, error) {
+	var raw struct {
+		Packets []struct {
+			PTSTime string `json:"pts_time"`
+			Flags   string `json:"flags"`
+		} `json:"packets"`
+		Format struct {
+			StartTime string `json:"start_time"`
+		} `json:"format"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("parse keyframes: %w", err)
+	}
+	start := atof(raw.Format.StartTime)
+	var times []float64
+	for _, p := range raw.Packets {
+		if !strings.Contains(p.Flags, "K") || p.PTSTime == "" || p.PTSTime == "N/A" {
+			continue
+		}
+		if ts := atof(p.PTSTime) - start; ts >= 0 && ts <= within {
+			times = append(times, ts)
+		}
+	}
+	return times, nil
+}

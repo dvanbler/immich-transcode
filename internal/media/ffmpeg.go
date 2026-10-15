@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -85,6 +86,10 @@ type EncodeSettings struct {
 	// SourceTimeBase is Tools.SourceTimeBase(): the -enc_time_base value
 	// that keeps the source's time base.
 	SourceTimeBase string
+	// Keyframes are source keyframe times (Tools.KeyframeTimes) to repeat in
+	// the output, so Immich picks the same thumbnail frame and its face
+	// detection sees the same faces. x265 places the rest.
+	Keyframes []float64
 }
 
 // x265Params sizes the thread pool explicitly. x265 otherwise asks libnuma
@@ -116,6 +121,9 @@ func TranscodeArgs(in, out string, p Probe, c Container, s EncodeSettings) []str
 	if audioCodec(p, c) == "aac" {
 		args = append(args, "-b:a", "192k")
 	}
+	if kf := forceKeyFrames(s.Keyframes); kf != "" {
+		args = append(args, "-force_key_frames", kf)
+	}
 	args = append(args,
 		"-fps_mode", "passthrough",
 		// Keep the source time base (e.g. 1/90000). By default the encoder
@@ -130,6 +138,17 @@ func TranscodeArgs(in, out string, p Probe, c Container, s EncodeSettings) []str
 		out,
 	)
 	return args
+}
+
+// forceKeyFrames formats times for -force_key_frames. Each is moved 1 ms
+// earlier: ffmpeg keys the first frame at or after a time, and rounding in
+// the printed time must not push it onto the next frame.
+func forceKeyFrames(times []float64) string {
+	parts := make([]string, 0, len(times))
+	for _, t := range times {
+		parts = append(parts, strconv.FormatFloat(math.Max(0, t-0.001), 'f', 6, 64))
+	}
+	return strings.Join(parts, ",")
 }
 
 func timeBase(flag string) string {

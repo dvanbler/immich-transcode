@@ -17,7 +17,9 @@ Each video is replaced in place, as if it had always been the smaller file:
 
 - **Nothing is lost from Immich.** The timeline date, location, albums,
   favorites, description, rating, tags, archive status, shared links and
-  stacks carry over to the replacement.
+  stacks carry over to the replacement. Faces are the one exception: Immich
+  detects them again on the replacement (see [People and faces](#people-and-faces)).
+  Videos with named people are held back until you confirm.
 - **Every original is backed up** locally and checked against Immich's
   checksum before anything changes. Originals are only moved to the Immich
   trash, never deleted.
@@ -398,11 +400,6 @@ failure stops that asset only.
 | `trashed` | Named people are checked again, then the original is moved to the trash (`force=false`). |
 | `done` | Work file removed. Sizes and CRF recorded. |
 
-**Named people.** Face assignments don't transfer to the replacement. If the
-original has named people, the asset stops at `needs_confirm` before anything
-is uploaded, and the names are logged. Rerun with `--allow-face-loss` to
-proceed, then reassign those people in Immich.
-
 **Failures after upload.** The new asset is moved to the trash, the original
 is left untouched, and the asset is marked `failed` with the error. See
 [Fixing a failed asset](#fixing-a-failed-asset).
@@ -413,6 +410,32 @@ carry it (such as PCM from an MKV), in which case it's re-encoded to AAC.
 
 Logs: a JSON log goes to `<backup_dir>/immich-transcode.log` (`log_file` to
 change). The console prints one line per asset and a total at the end.
+
+### People and faces
+
+Immich has no way to copy faces from one asset to another, so the replacement
+starts with no faces. Immich then runs face detection and recognition on it
+like any new upload, and recognition puts faces it knows back with the same
+person. For a video, Immich detects faces on one frame, picked from the
+keyframes in its first 20 seconds or so. The replacement keeps the original's
+keyframes for its first 30 seconds, so Immich picks the same frame and sees
+the same faces. This costs a few percent of file size, most on short videos.
+Until those background jobs have run, the replacement's People
+section is empty. A face can also fail to be recognised again. Check under
+Administration → Jobs in Immich, or assign the face by hand.
+
+- **Named people** (a person someone has given a name) stop the asset at
+  `needs_confirm` before anything is uploaded, and the names are logged.
+  Rerun with `--allow-face-loss` to proceed, then check those people in
+  Immich. The tool prints "reassign faces for: …" for each.
+- **Unnamed people**, the face groups Immich's recognition creates by itself,
+  don't stop the video. They show in the People section as a face thumbnail
+  with no name, and are usually recreated on the replacement.
+- The check only sees names set by the API key's user. In Immich v3 each user
+  names people separately, so a name a partner gave a face in your video
+  doesn't count.
+- `restore` puts the original back with its faces, if it is still in the
+  Immich trash.
 
 ## Tests
 

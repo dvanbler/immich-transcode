@@ -135,7 +135,14 @@ func (p *Processor) transcode(ctx context.Context, rec *manifest.Record, asset *
 	out := filepath.Join(p.Cfg.WorkDir, rec.AssetID+c.Ext)
 	tmp := filepath.Join(p.Cfg.WorkDir, rec.AssetID+".partial"+c.Ext)
 	crf := p.Opts.CRF
-	args := media.TranscodeArgs(rec.BackupPath, tmp, pr, c, media.EncodeSettings{CRF: crf, Preset: p.Cfg.Preset, SourceTimeBase: p.Tools.SourceTimeBase()})
+	// Not fatal: without them only the thumbnail frame (and so Immich's
+	// face detection) may differ from the original's.
+	keyframes, err := p.Tools.KeyframeTimes(ctx, rec.BackupPath, media.ThumbnailWindow)
+	if err != nil {
+		p.Log.Warn("could not read source keyframes", "asset", rec.AssetID, "err", err)
+	}
+	args := media.TranscodeArgs(rec.BackupPath, tmp, pr, c, media.EncodeSettings{CRF: crf, Preset: p.Cfg.Preset,
+		SourceTimeBase: p.Tools.SourceTimeBase(), Keyframes: keyframes})
 	p.Log.Debug("ffmpeg", "asset", rec.AssetID, "args", args)
 
 	start := time.Now()

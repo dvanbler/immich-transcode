@@ -1,6 +1,7 @@
 package media
 
 import (
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -186,5 +187,41 @@ func TestTranscodeArgsKeepSourceTimeBase(t *testing.T) {
 	// It is an output option: it must come after the input.
 	if slices.Index(args, "-enc_time_base") < slices.Index(args, "-i") {
 		t.Error("-enc_time_base placed before -i")
+	}
+}
+
+func TestParseKeyframeTimes(t *testing.T) {
+	data := []byte(`{"packets": [
+		{"pts_time": "1.500000", "flags": "K__"},
+		{"pts_time": "1.533333", "flags": "___"},
+		{"pts_time": "2.497944", "flags": "K__"},
+		{"pts_time": "N/A", "flags": "K__"},
+		{"pts_time": "40.000000", "flags": "K__"}
+	], "format": {"start_time": "1.500000"}}`)
+	got, err := parseKeyframeTimes(data, 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Relative to the file's start; past the window and N/A dropped.
+	want := []float64{0, 0.997944}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if math.Abs(got[i]-want[i]) > 1e-9 {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
+func TestTranscodeArgsForceKeyframes(t *testing.T) {
+	args := TranscodeArgs("i", "o", sdrProbe(), MP4, EncodeSettings{CRF: 26, Preset: "slow"})
+	if slices.Contains(args, "-force_key_frames") {
+		t.Error("-force_key_frames set without source keyframes")
+	}
+	args = TranscodeArgs("i", "o", sdrProbe(), MP4, EncodeSettings{CRF: 26, Preset: "slow",
+		Keyframes: []float64{0, 0.997944, 1.999989}})
+	if kf, _ := argValue(args, "-force_key_frames"); kf != "0.000000,0.996944,1.998989" {
+		t.Errorf("-force_key_frames = %q", kf)
 	}
 }
