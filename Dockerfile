@@ -21,6 +21,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 1000 --create-home app
 COPY --from=build /out/immich-transcode /usr/local/bin/immich-transcode
+COPY LICENSE /usr/share/doc/immich-transcode/LICENSE
 # The config file is read from /config/immich-transcode/config.yaml.
 ENV XDG_CONFIG_HOME=/config
 USER app

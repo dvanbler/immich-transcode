@@ -508,6 +508,12 @@ git push origin v1.1.0
 The workflow runs the unit tests and the integration tests against a
 throwaway Immich, builds the binaries for every platform with the tag as their
 version, and publishes a GitHub release with the binaries, `SHA256SUMS` and
-generated notes. It then pushes the [Docker image](#docker) for amd64 and arm64 to
+generated notes. `LICENSE` is published with them. It then pushes the [Docker image](#docker) for amd64 and arm64 to
 `ghcr.io`. If any test fails, nothing is published. Tags with a hyphen
 (`v1.1.0-rc.1`) become pre-releases and don't move the image's `latest` tag.
+
+## License
+
+MIT; see [LICENSE](LICENSE). The Docker image also contains ffmpeg (built
+with libx265, which is GPL), exiftool and other Debian packages under their own
+licenses; their license texts are in the image under `/usr/share/doc`.

@@ -30,7 +30,7 @@ spec-update:
 generate:
 	cd internal/immich/api && go generate ./...
 
-# Release binaries plus SHA256SUMS in dist/.
+# Release binaries plus SHA256SUMS and LICENSE in dist/.
 dist:
 	@rm -rf dist
 	@for p in $(PLATFORMS); do \
@@ -40,6 +40,7 @@ dist:
 			-o dist/$(BIN)-$$os-$$arch$$ext . || exit 1; \
 	done
 	@cd dist && if command -v sha256sum >/dev/null; then sha256sum immich-transcode-* ; else shasum -a 256 immich-transcode-* ; fi > SHA256SUMS
+	@cp LICENSE dist/
 	@echo "built $(VERSION) into dist/"
 
 # Local image for this machine's architecture (release images are multi-arch).
