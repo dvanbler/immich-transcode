@@ -1,6 +1,6 @@
 # immich-transcode
 
-**Shrink the videos in your Immich library without losing anything.**
+**Shrink the videos in your Immich library without losing anything Immich uses.**
 
 > **Note:** this utility was written with an AI coding assistant rather than
 > by hand. It has been tested on a real Immich library with tens
@@ -20,6 +20,12 @@ Each video is replaced in place, as if it had always been the smaller file:
   stacks carry over to the replacement. Faces are the one exception: Immich
   detects them again on the replacement (see [People and faces](#people-and-faces)).
   Videos with named people are held back until you confirm.
+- **Only the video and audio are kept from the file itself.** The re-encode
+  carries the first video stream, every audio stream and the file's
+  metadata. Any other track is dropped: subtitles, chapters, extra video
+  streams and data tracks, such as the Top Shot frame suggestions in Pixel
+  `.TS.mp4` videos that Google Photos uses. Immich reads none of these. The
+  backup keeps them.
 - **Every original is backed up** locally and checked against Immich's
   checksum before anything changes. Originals are only moved to the Immich
   trash, never deleted.
@@ -390,7 +396,7 @@ failure stops that asset only.
 | `downloaded` | Original streamed to `backup/YYYY/MM/<id>_<name>` and checked against Immich's SHA-1. An existing backup is reused if it matches; a mismatch is never overwritten. |
 | `decode_ok` | `ffmpeg -v error … -enc_time_base -1 -f null -` decodes the original. Any output → `skipped_corrupt`. Keeping the source time base avoids false alarms on variable-frame-rate phone video. |
 | `probed` | ffprobe computes real bpp. AV1 → `skipped_codec`. H.264 < 0.15 or HEVC < 0.12 → `skipped_efficient`. 10-bit, Main10, PQ or HLG → `skipped_hdr`. |
-| `transcoded` | libx265 to `work_dir`, audio copied. Full-range sources (`yuvj*` or `color_range=pc`) keep full range. |
+| `transcoded` | libx265 to `work_dir`, audio copied. Only the first video stream and the audio streams are mapped; other tracks (subtitles, data, extra video) are dropped. Full-range sources (`yuvj*` or `color_range=pc`) keep full range. |
 | `metadata_copied` | `exiftool -TagsFromFile` copies the QuickTime, Keys and UserData groups. |
 | `validated` | Output decodes cleanly. Duration within 0.5 s, same displayed size and orientation, same video packet count, same CreateDate and GPS. If it isn't at least `min_savings_percent` smaller → `skipped_low_gain`. **A dry run stops here.** |
 | `uploaded` | `POST /api/assets` with the original's `fileCreatedAt`, `fileModifiedAt`, filename, favorite and visibility. A duplicate response for an earlier upload of this encode is adopted, and restored from the trash if needed. |
