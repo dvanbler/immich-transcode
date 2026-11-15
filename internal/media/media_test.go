@@ -225,3 +225,21 @@ func TestTranscodeArgsForceKeyframes(t *testing.T) {
 		t.Errorf("-force_key_frames = %q", kf)
 	}
 }
+
+func TestParseMeta(t *testing.T) {
+	m, err := parseMeta([]byte(`[{"SourceFile":"a.mp4","CreateDate":0,"CreationDate":"2021:06:01 10:20:30+02:00","GPSLatitude":47.5}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.CreateDate != "0" || m.CreationDate != "2021:06:01 10:20:30+02:00" || m.GPSLatitude == nil || *m.GPSLatitude != 47.5 || m.GPSLongitude != nil {
+		t.Errorf("parsed %+v", m)
+	}
+	for name, in := range map[string]string{"not JSON": "oops", "no files": "[]", "two files": `[{}, {}]`} {
+		_, err := parseMeta([]byte(in))
+		if err == nil {
+			t.Errorf("%s: no error", name)
+		} else if strings.Contains(err.Error(), "<nil>") {
+			t.Errorf("%s: error %q hides the cause", name, err)
+		}
+	}
+}

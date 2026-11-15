@@ -50,6 +50,11 @@ func (t Tools) ReadMeta(ctx context.Context, path string) (Meta, error) {
 	if err != nil {
 		return Meta{}, err
 	}
+	return parseMeta(out)
+}
+
+// parseMeta parses `exiftool -j -n` output describing exactly one file.
+func parseMeta(out []byte) (Meta, error) {
 	var rows []struct {
 		Meta
 		// exiftool -n prints dates as strings but may emit 0 for an unset
@@ -57,8 +62,11 @@ func (t Tools) ReadMeta(ctx context.Context, path string) (Meta, error) {
 		CreateDate   any `json:"CreateDate"`
 		CreationDate any `json:"CreationDate"`
 	}
-	if err := json.Unmarshal(out, &rows); err != nil || len(rows) != 1 {
-		return Meta{}, fmt.Errorf("parse exiftool output: %v", err)
+	if err := json.Unmarshal(out, &rows); err != nil {
+		return Meta{}, fmt.Errorf("parse exiftool output: %w", err)
+	}
+	if len(rows) != 1 {
+		return Meta{}, fmt.Errorf("exiftool described %d files, expected 1", len(rows))
 	}
 	m := rows[0].Meta
 	m.CreateDate = stringify(rows[0].CreateDate)
