@@ -24,6 +24,9 @@ import (
 // jitter, guessed 179/6 fps) has two frames rounded into one slot every few
 // hundred frames, and the muxer reports "non monotonically increasing dts",
 // which is not a decoding problem.
+//
+// ffmpeg failing to start or being killed is returned as err (wrapping
+// ErrToolFailed), not as problems: it is no evidence the file is damaged.
 func (t Tools) DecodeCheck(ctx context.Context, path string) (problems string, err error) {
 	cmd := command(ctx, t.FFmpeg, "-nostdin", "-hide_banner", "-v", "error",
 		"-i", path, "-map", "0:v:0", "-enc_time_base", t.SourceTimeBase(), "-f", "null", "-")
@@ -33,6 +36,9 @@ func (t Tools) DecodeCheck(ctx context.Context, path string) (problems string, e
 	runErr := cmd.Run()
 	if ctx.Err() != nil {
 		return "", ctx.Err()
+	}
+	if runErr != nil && !exitedNonZero(runErr) {
+		return "", fmt.Errorf("ffmpeg: %w: %w", ErrToolFailed, runErr)
 	}
 	msg := strings.TrimSpace(stderr.String())
 	if runErr != nil && msg == "" {

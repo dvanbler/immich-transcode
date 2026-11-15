@@ -108,6 +108,11 @@ func (p *Processor) decodeCheck(ctx context.Context, rec *manifest.Record) (mani
 func (p *Processor) probe(ctx context.Context, rec *manifest.Record) (manifest.State, string, error) {
 	pr, err := p.Tools.ProbeFile(ctx, rec.BackupPath)
 	if err != nil {
+		// Only ffprobe rejecting the file is a reason to skip it for good.
+		// An aborted or broken ffprobe run is an ordinary, retryable failure.
+		if ctx.Err() != nil || errors.Is(err, media.ErrToolFailed) {
+			return "", "", err
+		}
 		return manifest.SkippedOther, err.Error(), nil
 	}
 	verdict, why := selection.Decide(pr, p.Cfg.BPP)

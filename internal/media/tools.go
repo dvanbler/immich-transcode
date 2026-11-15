@@ -84,6 +84,20 @@ func (t *Tools) Check(ctx context.Context) ([]ToolInfo, error) {
 	return infos, nil
 }
 
+// ErrToolFailed marks an external tool that did not run to completion: it
+// could not be started, or it was killed (for example by the kernel's
+// out-of-memory killer). Unlike a non-zero exit, that says nothing about the
+// file the tool was given, so callers must not treat it as a verdict.
+var ErrToolFailed = errors.New("did not run to completion")
+
+// exitedNonZero reports whether err is the tool itself exiting with a
+// failure status, as opposed to failing to start or dying from a signal
+// (ExitCode is -1 for those).
+func exitedNonZero(err error) bool {
+	var exit *exec.ExitError
+	return errors.As(err, &exit) && exit.ExitCode() > 0
+}
+
 // command is exec.CommandContext for every external tool: the child is
 // detached from the terminal's Ctrl-C (see detach) and killed only when ctx
 // is cancelled.
@@ -103,6 +117,9 @@ func runCapture(ctx context.Context, name string, args ...string) ([]byte, []byt
 	if err != nil {
 		if ctx.Err() != nil {
 			return stdout.Bytes(), stderr.Bytes(), ctx.Err()
+		}
+		if !exitedNonZero(err) {
+			return stdout.Bytes(), stderr.Bytes(), fmt.Errorf("%s: %w: %w", baseName(name), ErrToolFailed, err)
 		}
 		return stdout.Bytes(), stderr.Bytes(), fmt.Errorf("%s: %w: %s", baseName(name), err, tail(stderr.String(), 2000))
 	}

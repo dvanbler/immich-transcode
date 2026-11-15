@@ -480,6 +480,28 @@ func TestSkips(t *testing.T) {
 	}
 }
 
+// A tool that cannot run is a retryable failure, never a permanent skip.
+func TestBrokenToolFailsInsteadOfSkipping(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "no-such-tool")
+	for name, breakTool := range map[string]func(*media.Tools){
+		"ffmpeg":  func(tools *media.Tools) { tools.FFmpeg = missing },
+		"ffprobe": func(tools *media.Tools) { tools.FFprobe = missing },
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := setup(t)
+			id := e.fake.add(e.set.Portrait.Path)
+			breakTool(&e.proc.Tools)
+			out := e.proc.Process(context.Background(), id)
+			if !errors.Is(out.Err, media.ErrToolFailed) {
+				t.Errorf("error = %v, want ErrToolFailed", out.Err)
+			}
+			if st := e.state(id).State; st != manifest.Failed {
+				t.Errorf("state = %s, want %s", st, manifest.Failed)
+			}
+		})
+	}
+}
+
 func TestLowGain(t *testing.T) {
 	e := setup(t)
 	e.proc.Opts.Apply = true
