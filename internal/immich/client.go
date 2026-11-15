@@ -100,6 +100,17 @@ func check(op string, r generatedResponse, err error) error {
 	return nil
 }
 
+// decoded returns the typed body of a response that passed check. The
+// generated parser fills it in only for the documented status with a JSON
+// content type, so anything else answering 2xx (an auth proxy's login page,
+// a server URL that is not Immich) leaves it nil.
+func decoded[T any](op string, r generatedResponse, body *T) (*T, error) {
+	if body == nil {
+		return nil, fmt.Errorf("%s: HTTP %d response is not the JSON Immich sends; check the server URL and any proxy in front of Immich", op, r.StatusCode())
+	}
+	return body, nil
+}
+
 // Version is a server version.
 type Version struct{ Major, Minor, Patch int }
 
@@ -111,7 +122,11 @@ func (c *Client) ServerVersion(ctx context.Context) (Version, error) {
 	if err := check("get server version", r, err); err != nil {
 		return Version{}, err
 	}
-	return Version{r.JSON200.Major, r.JSON200.Minor, r.JSON200.Patch}, nil
+	v, err := decoded("get server version", r, r.JSON200)
+	if err != nil {
+		return Version{}, err
+	}
+	return Version{v.Major, v.Minor, v.Patch}, nil
 }
 
 // MissingPermissions returns which of want the API key lacks.
@@ -120,8 +135,12 @@ func (c *Client) MissingPermissions(ctx context.Context, want []api.Permission) 
 	if err := check("get API key", r, err); err != nil {
 		return nil, err
 	}
+	key, err := decoded("get API key", r, r.JSON200)
+	if err != nil {
+		return nil, err
+	}
 	have := map[api.Permission]bool{}
-	for _, p := range r.JSON200.Permissions {
+	for _, p := range key.Permissions {
 		have[p] = true
 	}
 	if have[api.All] {
@@ -142,7 +161,11 @@ func (c *Client) MyUserID(ctx context.Context) (string, error) {
 	if err := check("get current user", r, err); err != nil {
 		return "", err
 	}
-	return r.JSON200.Id.String(), nil
+	user, err := decoded("get current user", r, r.JSON200)
+	if err != nil {
+		return "", err
+	}
+	return user.Id.String(), nil
 }
 
 // SearchVideos pages through videos of at least minSize bytes, largest
@@ -176,10 +199,14 @@ func (c *Client) SearchVideos(ctx context.Context, minSize int64, takenBefore *t
 		if err := check("search assets", r, err); err != nil {
 			return err
 		}
-		if err := fn(r.JSON200.Assets.Items); err != nil {
+		res, err := decoded("search assets", r, r.JSON200)
+		if err != nil {
 			return err
 		}
-		next := r.JSON200.Assets.NextCursor
+		if err := fn(res.Assets.Items); err != nil {
+			return err
+		}
+		next := res.Assets.NextCursor
 		if next == nil || *next == "" {
 			return nil
 		}
@@ -197,7 +224,7 @@ func (c *Client) GetAsset(ctx context.Context, id string) (*Asset, error) {
 	if err := check("get asset "+id, r, err); err != nil {
 		return nil, err
 	}
-	return r.JSON200, nil
+	return decoded("get asset "+id, r, r.JSON200)
 }
 
 // Download streams the original file of asset id into w and returns the
