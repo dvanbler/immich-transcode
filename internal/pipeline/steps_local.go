@@ -53,7 +53,10 @@ func (p *Processor) download(ctx context.Context, rec *manifest.Record, asset *i
 		if sum != asset.Checksum {
 			return "", "", fmt.Errorf("backup %s exists but its checksum %s does not match Immich's %s; move it aside to re-download", path, sum, asset.Checksum)
 		}
-		fi, _ := os.Stat(path)
+		fi, err := os.Stat(path)
+		if err != nil {
+			return "", "", err
+		}
 		rec.OriginalSize = fi.Size()
 		return manifest.Downloaded, "existing backup verified", nil
 	}
@@ -173,9 +176,12 @@ func (p *Processor) transcode(ctx context.Context, rec *manifest.Record, asset *
 	if err := os.Rename(tmp, out); err != nil {
 		return "", "", err
 	}
+	fi, err := os.Stat(out)
+	if err != nil {
+		return "", "", err
+	}
 	rec.OutputPath = out
 	rec.CRF = crf
-	fi, _ := os.Stat(out)
 	rec.NewSize = fi.Size()
 	return manifest.Transcoded, fmt.Sprintf("crf %d preset %s in %s", crf, p.Cfg.Preset, time.Since(start).Round(time.Second)), nil
 }
