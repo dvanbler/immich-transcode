@@ -1074,3 +1074,19 @@ func TestRestoreAfterTrashEmptied(t *testing.T) {
 		t.Error("restored upload was processed as a new original")
 	}
 }
+
+// --crf must not turn a restore under way into a re-encode: the backup, not
+// a fresh encode of it, is what goes back into Immich.
+func TestRestoreIgnoresExplicitCRF(t *testing.T) {
+	e, id, rec := restoreSetup(t)
+	repl := rec.NewAssetID
+	if err := e.store.MarkRestore(context.Background(), &rec); err != nil {
+		t.Fatal(err)
+	}
+	e.proc.Opts.CRF, e.proc.Opts.CRFExplicit = rec.CRF+4, true
+	if e.proc.Opts.Reencodes(rec) {
+		t.Error("Reencodes true for a restore")
+	}
+	e.proc.Process(context.Background(), id)
+	checkRestored(t, e, id, repl, id)
+}

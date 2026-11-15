@@ -48,9 +48,10 @@ type Options struct {
 }
 
 // Reencodes reports whether rec has a local encode (not yet uploaded) that
-// these options would replace because --crf asks for a different value.
+// these options would replace because --crf asks for a different value. A
+// restore has no encode: the file it uploads is the backup itself.
 func (o Options) Reencodes(rec manifest.Record) bool {
-	return o.CRFExplicit && rec.CRF != o.CRF && hasLocalEncode(rec.State)
+	return o.CRFExplicit && rec.CRF != o.CRF && hasLocalEncode(rec.State) && rec.Mode != manifest.ModeRestore
 }
 
 // HasWork reports whether processing rec with these options would do
@@ -348,7 +349,7 @@ func (p *Processor) reconcileLocal(ctx context.Context, rec *manifest.Record) er
 	case p.Opts.Reencodes(*rec):
 		target, why = manifest.Probed, fmt.Sprintf("rewind: re-encode at crf %d (was %d)", p.Opts.CRF, rec.CRF)
 		p.Console.Printf("%s: re-encoding at crf %d (existing encode is crf %d)", rec.FileName, p.Opts.CRF, rec.CRF)
-	case hasLocalEncode(rec.State) && rec.CRF != p.Opts.CRF:
+	case hasLocalEncode(rec.State) && rec.CRF != p.Opts.CRF && rec.Mode != manifest.ModeRestore:
 		p.Console.Printf("%s: keeping existing crf %d encode (pass --crf %d to re-encode)", rec.FileName, rec.CRF, p.Opts.CRF)
 	}
 	if target == rec.State {
