@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -145,12 +146,10 @@ func (a *app) process(f runFlags, pick func(context.Context, *session) ([]string
 	if f.apply {
 		perms = permsApply
 	}
-	var proc *pipeline.Processor
-	ctx, stop := a.interruptible(func() {
-		if proc != nil {
-			proc.RequestStop()
-		}
-	})
+	// Created before the signal handler so a Ctrl-C during preflight or the
+	// candidate search is remembered; its other fields are filled in below.
+	proc := &pipeline.Processor{}
+	ctx, stop := a.interruptible(proc.RequestStop)
 	defer stop()
 	s, err := a.preflight(ctx, preflightOpts{perms: perms, needTools: true})
 	if err != nil {
@@ -163,6 +162,9 @@ func (a *app) process(f runFlags, pick func(context.Context, *session) ([]string
 	picked, err := pick(ctx, s)
 	if err != nil {
 		return err
+	}
+	if proc.Stopping() {
+		return errors.New("interrupted before any asset was processed")
 	}
 	// Drop assets with nothing to do before applying --limit, so repeated
 	// dry runs move on to new candidates instead of revisiting validated ones.
@@ -195,16 +197,14 @@ func (a *app) process(f runFlags, pick func(context.Context, *session) ([]string
 	a.console.Printf("\n%s: %d asset(s), crf %d, preset %s, concurrency %d\n", mode, len(ids), s.cfg.CRF, s.cfg.Preset, s.cfg.Concurrency)
 	s.log.Info("run start", "version", a.version, "mode", mode, "assets", len(ids), "crf", s.cfg.CRF, "preset", s.cfg.Preset)
 
-	proc = &pipeline.Processor{
-		Cfg:     s.cfg,
-		Opts:    opts,
-		Immich:  s.client,
-		Tools:   s.tools,
-		Store:   s.store,
-		Log:     s.log,
-		Console: a.console,
-		UserID:  s.userID,
-	}
+	proc.Cfg = s.cfg
+	proc.Opts = opts
+	proc.Immich = s.client
+	proc.Tools = s.tools
+	proc.Store = s.store
+	proc.Log = s.log
+	proc.Console = a.console
+	proc.UserID = s.userID
 	outcomes := proc.Run(ctx, ids)
 
 	var saved, potential int64

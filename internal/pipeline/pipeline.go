@@ -91,6 +91,9 @@ type Processor struct {
 // RequestStop asks workers to stop after their current step.
 func (p *Processor) RequestStop() { p.stopping.Store(true) }
 
+// Stopping reports whether RequestStop has been called.
+func (p *Processor) Stopping() bool { return p.stopping.Load() }
+
 // Outcome summarises one asset's processing in this run.
 type Outcome struct {
 	AssetID     string

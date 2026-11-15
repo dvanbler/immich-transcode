@@ -714,6 +714,23 @@ func TestRepeatedDryRunReusesWork(t *testing.T) {
 	}
 }
 
+// A stop requested before Run starts (Ctrl-C during preflight or the
+// candidate search) must not be lost: no asset is started.
+func TestStopRequestedBeforeRun(t *testing.T) {
+	e := setup(t)
+	id := e.fake.add(e.set.Portrait.Path)
+	e.proc.RequestStop()
+	if !e.proc.Stopping() {
+		t.Fatal("Stopping() is false after RequestStop")
+	}
+	if out := e.proc.Run(context.Background(), []string{id}); len(out) != 0 {
+		t.Fatalf("processed %d asset(s) after a stop request, want 0", len(out))
+	}
+	if _, ok, err := e.store.Get(context.Background(), id); err != nil || ok {
+		t.Fatalf("manifest row exists after a stop request (ok=%v, err=%v)", ok, err)
+	}
+}
+
 func TestHasWork(t *testing.T) {
 	rec := func(s manifest.State, crf int) manifest.Record { return manifest.Record{State: s, CRF: crf} }
 	cases := []struct {
