@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -765,6 +766,31 @@ func TestRunWithoutConcurrencySet(t *testing.T) {
 	out := e.proc.Run(ctx, []string{"00000000-0000-4000-8000-000000000000"})
 	if len(out) != 1 || out[0].Err == nil {
 		t.Fatalf("outcomes = %+v, want one failed lookup", out)
+	}
+}
+
+func TestDistinct(t *testing.T) {
+	got := Distinct([]string{"b", "a", "b", "c", "a"})
+	if want := []string{"b", "a", "c"}; !slices.Equal(got, want) {
+		t.Errorf("Distinct = %v, want %v", got, want)
+	}
+	if got := Distinct(nil); len(got) != 0 {
+		t.Errorf("Distinct(nil) = %v", got)
+	}
+}
+
+// The same id given twice must not put two workers on one asset.
+func TestRunProcessesRepeatedIDOnce(t *testing.T) {
+	e := setup(t)
+	e.proc.Cfg.Concurrency = 2
+	e.proc.Opts.Apply = true
+	id := e.fake.add(e.set.Portrait.Path)
+	out := e.proc.Run(context.Background(), []string{id, id})
+	if len(out) != 1 || out[0].State != manifest.Done {
+		t.Fatalf("outcomes = %+v, want one done asset", out)
+	}
+	if e.fake.uploads != 1 {
+		t.Errorf("%d uploads, want 1", e.fake.uploads)
 	}
 }
 

@@ -117,9 +117,25 @@ func (o Outcome) Saved() int64 {
 // errInterrupted marks a step abandoned because of Ctrl-C.
 var errInterrupted = errors.New("interrupted")
 
+// Distinct returns ids without repeats, keeping the first of each in order.
+func Distinct(ids []string) []string {
+	seen := make(map[string]struct{}, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
 // Run processes ids with Cfg.Concurrency workers and returns per-asset
-// outcomes in completion order.
+// outcomes in completion order. A repeated id is processed once: two workers
+// on the same asset would write the same backup and work files.
 func (p *Processor) Run(ctx context.Context, ids []string) []Outcome {
+	ids = Distinct(ids)
 	if p.PollInterval == 0 {
 		p.PollInterval = 3 * time.Second
 	}

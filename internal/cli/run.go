@@ -170,7 +170,9 @@ func (a *app) process(f runFlags, pick func(context.Context, *session) ([]string
 	// dry runs move on to new candidates instead of revisiting validated ones.
 	var ids []string
 	idle := 0
-	for _, id := range picked {
+	// Distinct: the same --asset given twice is one asset, here and in the
+	// counts below.
+	for _, id := range pipeline.Distinct(picked) {
 		rec, ok, err := s.store.Get(ctx, id)
 		if err != nil {
 			return err
