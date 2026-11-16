@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -224,9 +226,10 @@ func (a *app) process(f runFlags, pick func(context.Context, *session) ([]string
 		}
 	}
 	a.console.Printf("\nProcessed %d of %d asset(s).", len(outcomes), len(ids))
-	for st, n := range counts {
+	// Sorted, as in status: map iteration order changes from run to run.
+	for _, st := range slices.Sorted(maps.Keys(counts)) {
 		if st != "" {
-			a.console.Printf("  %-20s %d", st, n)
+			a.console.Printf("  %-20s %d", st, counts[st])
 		}
 	}
 	a.console.Printf("Saved this run: %s", config.HumanBytes(saved))

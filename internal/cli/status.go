@@ -3,7 +3,8 @@ package cli
 import (
 	"context"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 	"text/tabwriter"
 
@@ -73,14 +74,9 @@ func (a *app) statusCmd() *cobra.Command {
 			if shown < len(recs) {
 				a.console.Printf("(%d skipped assets hidden; use --all)", len(recs)-shown)
 			}
-			keys := make([]string, 0, len(counts))
-			for st := range counts {
-				keys = append(keys, string(st))
-			}
-			sort.Strings(keys)
 			a.console.Printf("\n%d assets in manifest %s", len(recs), cfg.ManifestPath)
-			for _, k := range keys {
-				a.console.Printf("  %-20s %d", k, counts[manifest.State(k)])
+			for _, st := range slices.Sorted(maps.Keys(counts)) {
+				a.console.Printf("  %-20s %d", st, counts[st])
 			}
 			a.console.Printf("Total saved: %s", config.HumanBytes(saved))
 			return nil
