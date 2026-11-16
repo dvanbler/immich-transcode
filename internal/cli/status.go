@@ -21,6 +21,13 @@ func (a *app) statusCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Show the manifest: each asset's state, bytes saved and failures",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			want := map[string]bool{}
+			for _, st := range states {
+				if !manifest.State(st).Valid() {
+					return fmt.Errorf("unknown state %q", st)
+				}
+				want[st] = true
+			}
 			cfg := a.cfg
 			if err := cfg.Finalize(); err != nil {
 				return err
@@ -33,10 +40,6 @@ func (a *app) statusCmd() *cobra.Command {
 			recs, err := s.store.List(context.Background())
 			if err != nil {
 				return err
-			}
-			want := map[string]bool{}
-			for _, st := range states {
-				want[st] = true
 			}
 			w := tabwriter.NewWriter(a.console.Writer(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "STATE\tORIGINAL\tNEW\tSAVED\tUPDATED\tASSET\tFILE\tDETAIL")

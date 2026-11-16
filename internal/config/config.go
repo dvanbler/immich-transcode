@@ -144,10 +144,10 @@ func (c *Config) Finalize() error {
 		return fmt.Errorf("min_savings_percent %.1f out of range 0-99", c.MinSavingsPercent)
 	}
 	if c.Concurrency < 1 {
-		c.Concurrency = 1
+		return fmt.Errorf("concurrency %d must be at least 1", c.Concurrency)
 	}
 	if c.MetadataTimeout <= 0 {
-		c.MetadataTimeout = 10 * time.Minute
+		return fmt.Errorf("metadata_timeout %s must be positive", c.MetadataTimeout)
 	}
 	return nil
 }

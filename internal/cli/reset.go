@@ -50,8 +50,15 @@ Done assets cannot be reset, and needs_confirm assets are continued with
 				}
 				wantState[manifest.State(st)] = true
 			}
+			known := make(map[string]bool, len(recs))
+			for _, r := range recs {
+				known[r.AssetID] = true
+			}
 			wantAsset := map[string]bool{}
 			for _, id := range assets {
+				if !known[id] {
+					return fmt.Errorf("asset %s is not in the manifest", id)
+				}
 				wantAsset[id] = true
 			}
 			n := 0

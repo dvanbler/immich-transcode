@@ -129,3 +129,20 @@ func TestCutoff(t *testing.T) {
 		}
 	}
 }
+
+// Out-of-range settings are rejected, not silently replaced.
+func TestFinalizeRejectsBadValues(t *testing.T) {
+	for name, mod := range map[string]func(*Config){
+		"crf":                 func(c *Config) { c.CRF = 52 },
+		"min_savings_percent": func(c *Config) { c.MinSavingsPercent = 100 },
+		"concurrency":         func(c *Config) { c.Concurrency = 0 },
+		"metadata_timeout":    func(c *Config) { c.MetadataTimeout = 0 },
+	} {
+		c := Default()
+		c.BackupDir = "/mnt/backup"
+		mod(&c)
+		if err := c.Finalize(); err == nil || !strings.Contains(err.Error(), name) {
+			t.Errorf("%s: error = %v, want one naming the setting", name, err)
+		}
+	}
+}

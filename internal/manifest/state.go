@@ -48,6 +48,12 @@ var rank = func() map[State]int {
 	return m
 }()
 
+// Valid reports whether s is a state the manifest can hold.
+func (s State) Valid() bool {
+	_, progress := rank[s]
+	return progress || s.Terminal()
+}
+
 // Terminal states are never processed again by run or resume, except
 // NeedsConfirm (with --allow-face-loss) and Failed (with --retry-failed).
 func (s State) Terminal() bool {

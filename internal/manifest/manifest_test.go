@@ -67,6 +67,9 @@ func TestStatePredicates(t *testing.T) {
 	if !SkippedLowGain.Permanent() || Failed.Permanent() || NeedsConfirm.Permanent() || !Done.Permanent() || !Restored.Permanent() {
 		t.Error("Permanent() wrong")
 	}
+	if !Pending.Valid() || !Verified.Valid() || !SkippedHDR.Valid() || !Failed.Valid() || State("").Valid() || State("bogus").Valid() {
+		t.Error("Valid() wrong")
+	}
 	if Pending.InProgress() || Done.InProgress() || !Transcoded.InProgress() || Failed.InProgress() {
 		t.Error("InProgress() wrong")
 	}
