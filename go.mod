@@ -1,4 +1,4 @@
-module immich-transcode
+module github.com/dvanbler/immich-transcode
 
 go 1.27.3
 

@@ -3,7 +3,7 @@ package cli
 import (
 	"testing"
 
-	"immich-transcode/internal/manifest"
+	"github.com/dvanbler/immich-transcode/internal/manifest"
 )
 
 func TestResumable(t *testing.T) {

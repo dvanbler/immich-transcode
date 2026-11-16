@@ -6,10 +6,10 @@ import (
 	"slices"
 	"time"
 
-	"immich-transcode/internal/config"
-	"immich-transcode/internal/immich"
-	"immich-transcode/internal/manifest"
-	"immich-transcode/internal/selection"
+	"github.com/dvanbler/immich-transcode/internal/config"
+	"github.com/dvanbler/immich-transcode/internal/immich"
+	"github.com/dvanbler/immich-transcode/internal/manifest"
+	"github.com/dvanbler/immich-transcode/internal/selection"
 )
 
 // candidate is a video selected from API data alone.

@@ -20,7 +20,7 @@ import (
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"immich-transcode/internal/immich/api"
+	"github.com/dvanbler/immich-transcode/internal/immich/api"
 )
 
 // SpecVersion is the Immich version whose OpenAPI spec generated api.

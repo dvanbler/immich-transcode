@@ -20,13 +20,13 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"immich-transcode/internal/config"
-	"immich-transcode/internal/immich"
-	"immich-transcode/internal/immich/api"
-	"immich-transcode/internal/logging"
-	"immich-transcode/internal/manifest"
-	"immich-transcode/internal/media"
-	"immich-transcode/internal/testmedia"
+	"github.com/dvanbler/immich-transcode/internal/config"
+	"github.com/dvanbler/immich-transcode/internal/immich"
+	"github.com/dvanbler/immich-transcode/internal/immich/api"
+	"github.com/dvanbler/immich-transcode/internal/logging"
+	"github.com/dvanbler/immich-transcode/internal/manifest"
+	"github.com/dvanbler/immich-transcode/internal/media"
+	"github.com/dvanbler/immich-transcode/internal/testmedia"
 )
 
 const userID = "11111111-1111-4111-8111-111111111111"

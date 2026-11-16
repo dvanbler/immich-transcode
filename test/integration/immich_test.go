@@ -18,9 +18,9 @@ import (
 	"testing"
 	"time"
 
-	"immich-transcode/internal/immich"
-	"immich-transcode/internal/manifest"
-	"immich-transcode/internal/testmedia"
+	"github.com/dvanbler/immich-transcode/internal/immich"
+	"github.com/dvanbler/immich-transcode/internal/manifest"
+	"github.com/dvanbler/immich-transcode/internal/testmedia"
 )
 
 func serverURL() string {

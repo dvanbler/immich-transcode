@@ -7,9 +7,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"immich-transcode/internal/config"
-	"immich-transcode/internal/manifest"
-	"immich-transcode/internal/pipeline"
+	"github.com/dvanbler/immich-transcode/internal/config"
+	"github.com/dvanbler/immich-transcode/internal/manifest"
+	"github.com/dvanbler/immich-transcode/internal/pipeline"
 )
 
 func (a *app) verifyCmd() *cobra.Command {

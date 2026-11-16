@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"slices"
 
-	"immich-transcode/internal/config"
-	"immich-transcode/internal/media"
+	"github.com/dvanbler/immich-transcode/internal/config"
+	"github.com/dvanbler/immich-transcode/internal/media"
 )
 
 // AssumedFPS is used for estimates before ffprobe has run.

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"immich-transcode/internal/immich/api"
+	"github.com/dvanbler/immich-transcode/internal/immich/api"
 )
 
 // Something that is not Immich answering 200 (an auth proxy's login page, a

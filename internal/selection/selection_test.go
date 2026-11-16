@@ -4,8 +4,8 @@ import (
 	"math"
 	"testing"
 
-	"immich-transcode/internal/config"
-	"immich-transcode/internal/media"
+	"github.com/dvanbler/immich-transcode/internal/config"
+	"github.com/dvanbler/immich-transcode/internal/media"
 )
 
 func TestEstimates(t *testing.T) {

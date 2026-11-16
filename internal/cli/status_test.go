@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"immich-transcode/internal/manifest"
+	"github.com/dvanbler/immich-transcode/internal/manifest"
 )
 
 // The help text and the unknown-state error name every state.

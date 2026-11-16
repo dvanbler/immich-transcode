@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	"immich-transcode/internal/cli"
+	"github.com/dvanbler/immich-transcode/internal/cli"
 )
 
 // version is set at build time: go build -ldflags "-X main.version=v0.1.0".

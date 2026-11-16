@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"immich-transcode/internal/config"
+	"github.com/dvanbler/immich-transcode/internal/config"
 )
 
 func (a *app) scanCmd() *cobra.Command {

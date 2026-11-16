@@ -16,12 +16,12 @@ import (
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"immich-transcode/internal/config"
-	"immich-transcode/internal/immich"
-	"immich-transcode/internal/immich/api"
-	"immich-transcode/internal/logging"
-	"immich-transcode/internal/manifest"
-	"immich-transcode/internal/media"
+	"github.com/dvanbler/immich-transcode/internal/config"
+	"github.com/dvanbler/immich-transcode/internal/immich"
+	"github.com/dvanbler/immich-transcode/internal/immich/api"
+	"github.com/dvanbler/immich-transcode/internal/logging"
+	"github.com/dvanbler/immich-transcode/internal/manifest"
+	"github.com/dvanbler/immich-transcode/internal/media"
 )
 
 // Immich is the subset of the server API the pipeline uses.

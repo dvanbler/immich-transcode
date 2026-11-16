@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"immich-transcode/internal/manifest"
-	"immich-transcode/internal/media"
+	"github.com/dvanbler/immich-transcode/internal/manifest"
+	"github.com/dvanbler/immich-transcode/internal/media"
 )
 
 // VerifyReplacement downloads the replacement of a done asset from Immich

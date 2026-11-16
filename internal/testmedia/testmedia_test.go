@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"immich-transcode/internal/media"
+	"github.com/dvanbler/immich-transcode/internal/media"
 )
 
 func TestGenerate(t *testing.T) {

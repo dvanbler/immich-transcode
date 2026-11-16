@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"immich-transcode/internal/manifest"
+	"github.com/dvanbler/immich-transcode/internal/manifest"
 )
 
 func (a *app) redoCmd() *cobra.Command {

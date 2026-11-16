@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"immich-transcode/internal/logging"
+	"github.com/dvanbler/immich-transcode/internal/logging"
 )
 
 func interrupt(t *testing.T) {
