@@ -70,6 +70,10 @@ func TestStatePredicates(t *testing.T) {
 	if !Pending.Valid() || !Verified.Valid() || !SkippedHDR.Valid() || !Failed.Valid() || State("").Valid() || State("bogus").Valid() {
 		t.Error("Valid() wrong")
 	}
+	if !Uploaded.AtLeast(Transcoded) || !Transcoded.AtLeast(Transcoded) || Probed.AtLeast(Transcoded) ||
+		Failed.AtLeast(Pending) || Done.AtLeast(Failed) {
+		t.Error("AtLeast() wrong")
+	}
 	if Pending.InProgress() || Done.InProgress() || !Transcoded.InProgress() || Failed.InProgress() {
 		t.Error("InProgress() wrong")
 	}

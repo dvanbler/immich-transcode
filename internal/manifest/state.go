@@ -127,6 +127,14 @@ func (s State) Remote() bool {
 	return ok && r >= rank[Uploaded] && r < rank[Trashed]
 }
 
+// AtLeast reports whether s is ref or a later step in the pipeline. It is
+// false when either is not a pipeline step (the skips, Failed and so on).
+func (s State) AtLeast(ref State) bool {
+	r, ok := rank[s]
+	refRank, refOK := rank[ref]
+	return ok && refOK && r >= refRank
+}
+
 // Next returns the state that follows s in the pipeline.
 func (s State) Next() (State, bool) {
 	r, ok := rank[s]

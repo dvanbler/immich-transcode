@@ -66,7 +66,7 @@ func (o Options) HasWork(rec manifest.Record) bool {
 
 // hasLocalEncode is true from Transcoded up to (not including) Uploaded.
 func hasLocalEncode(s manifest.State) bool {
-	return atOrAfter(s, manifest.Transcoded) && !atOrAfter(s, manifest.Uploaded)
+	return s.AtLeast(manifest.Transcoded) && !s.AtLeast(manifest.Uploaded)
 }
 
 // Processor runs assets through the pipeline.
@@ -446,19 +446,6 @@ func fileSize(a *immich.Asset) int64 {
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
-}
-
-func atOrAfter(s, ref manifest.State) bool {
-	for x := ref; ; {
-		if s == x {
-			return true
-		}
-		n, ok := x.Next()
-		if !ok {
-			return false
-		}
-		x = n
-	}
 }
 
 func pct(oldSize, newSize int64) float64 {
