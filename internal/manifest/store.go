@@ -95,16 +95,60 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("init manifest %s: %w", path, err)
 	}
-	if err := migrate(db); err != nil {
+	if err := migrate(context.Background(), db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("upgrade manifest %s: %w", path, err)
 	}
 	return &Store{db: db}, nil
 }
 
-// migrate adds columns introduced after a manifest was created.
-func migrate(db *sql.DB) error {
-	rows, err := db.Query(`SELECT name FROM pragma_table_info('assets')`)
+// migrations upgrade a manifest one schema version at a time. A manifest's
+// version (SQLite's user_version) is the number of steps already applied to
+// it, so steps are only ever appended: never edited, reordered or removed.
+// The schema constant above is version 0.
+var migrations = []func(context.Context, *sql.Tx) error{
+	addRedoColumns,
+}
+
+// migrate applies the steps a manifest has not had yet, each in its own
+// transaction together with its version bump.
+func migrate(ctx context.Context, db *sql.DB) error {
+	var version int
+	if err := db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		return err
+	}
+	if version > len(migrations) {
+		return fmt.Errorf("it was written by a newer immich-transcode (schema version %d; this build knows up to %d)", version, len(migrations))
+	}
+	for ; version < len(migrations); version++ {
+		if err := applyMigration(ctx, db, version); err != nil {
+			return fmt.Errorf("schema version %d: %w", version+1, err)
+		}
+	}
+	return nil
+}
+
+func applyMigration(ctx context.Context, db *sql.DB, index int) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := migrations[index](ctx, tx); err != nil {
+		return err
+	}
+	// PRAGMA takes no bound parameters; the value is our own integer.
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, index+1)); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// addRedoColumns adds the columns redo and restore use. Manifests from
+// before versions were recorded are all at version 0 whether or not they
+// already have them, so this step checks.
+func addRedoColumns(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, `SELECT name FROM pragma_table_info('assets')`)
 	if err != nil {
 		return err
 	}
@@ -117,10 +161,12 @@ func migrate(db *sql.DB) error {
 		}
 		have[name] = true
 	}
-	rows.Close()
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return err
+	}
 	for _, col := range []string{"source_asset_id", "mode"} {
 		if !have[col] {
-			if _, err := db.Exec(`ALTER TABLE assets ADD COLUMN ` + col + ` TEXT NOT NULL DEFAULT ''`); err != nil {
+			if _, err := tx.ExecContext(ctx, `ALTER TABLE assets ADD COLUMN `+col+` TEXT NOT NULL DEFAULT ''`); err != nil {
 				return err
 			}
 		}

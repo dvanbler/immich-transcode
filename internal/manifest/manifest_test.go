@@ -144,6 +144,35 @@ func TestStore(t *testing.T) {
 	}
 }
 
+func schemaVersion(t *testing.T, st *Store) int {
+	t.Helper()
+	var v int
+	if err := st.db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+func TestSchemaVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "m.db")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := schemaVersion(t, st); v != len(migrations) {
+		t.Errorf("new manifest is at schema version %d, want %d", v, len(migrations))
+	}
+	// A manifest from a newer build is refused rather than misread.
+	if _, err := st.db.Exec(`PRAGMA user_version = 9999`); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	if st, err := Open(path); err == nil {
+		st.Close()
+		t.Error("opened a manifest with a newer schema version")
+	}
+}
+
 func TestMigrationAndRedo(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "old.db")
@@ -155,11 +184,18 @@ func TestMigrationAndRedo(t *testing.T) {
 	if _, err := st.db.Exec(`ALTER TABLE assets DROP COLUMN source_asset_id`); err != nil {
 		t.Fatal(err)
 	}
+	// Such manifests carry no schema version.
+	if _, err := st.db.Exec(`PRAGMA user_version = 0`); err != nil {
+		t.Fatal(err)
+	}
 	st.Close()
 	if st, err = Open(path); err != nil {
 		t.Fatalf("reopen old manifest: %v", err)
 	}
 	defer st.Close()
+	if v := schemaVersion(t, st); v != len(migrations) {
+		t.Errorf("upgraded manifest is at schema version %d, want %d", v, len(migrations))
+	}
 
 	r, _ := st.Ensure(ctx, "orig", "clip.mp4", 100)
 	if r.Source() != "orig" {
