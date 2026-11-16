@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -18,8 +17,6 @@ import (
 	"immich-transcode/internal/media"
 	"immich-transcode/internal/selection"
 )
-
-type ioWriter = io.Writer
 
 // BackupPath is backup/YYYY/MM/<assetId>_<originalFileName>, dated by the
 // asset's timeline date.

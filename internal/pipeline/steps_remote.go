@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -41,7 +42,7 @@ func (p *Processor) faceGate(ctx context.Context, rec *manifest.Record) (bool, s
 		return false, "", err
 	}
 	names := NamedPeople(a)
-	rec.People = joinNames(names)
+	rec.People = strings.Join(names, ", ")
 	if len(names) == 0 || p.Opts.AllowFaceLoss {
 		return true, "", nil
 	}

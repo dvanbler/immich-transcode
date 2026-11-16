@@ -6,9 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,7 +26,7 @@ import (
 // Immich is the subset of the server API the pipeline uses.
 type Immich interface {
 	GetAsset(ctx context.Context, id string) (*immich.Asset, error)
-	Download(ctx context.Context, id string, w ioWriter, progress func(int64)) (string, int64, error)
+	Download(ctx context.Context, id string, w io.Writer, progress func(int64)) (string, int64, error)
 	Upload(ctx context.Context, u immich.UploadRequest, progress func(int64)) (immich.UploadResult, error)
 	CopyRelationships(ctx context.Context, from, to string) error
 	UpdateAsset(ctx context.Context, id string, dto api.UpdateAssetDto) error
@@ -467,5 +467,3 @@ func pct(oldSize, newSize int64) float64 {
 	}
 	return 100 * float64(oldSize-newSize) / float64(oldSize)
 }
-
-func joinNames(names []string) string { return strings.Join(names, ", ") }
