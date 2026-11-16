@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"text/tabwriter"
 	"time"
@@ -19,7 +18,8 @@ func (a *app) scanCmd() *cobra.Command {
 		Use:   "scan",
 		Short: "List candidate videos with estimated savings (read-only)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx := context.Background()
+			ctx, stop := a.interruptible(cmd.Context(), nil)
+			defer stop()
 			if !cmd.Flags().Changed("min-size") {
 				minSize = a.cfg.MinSize
 			}

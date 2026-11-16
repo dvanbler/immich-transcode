@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -38,7 +37,7 @@ Done assets cannot be reset, and needs_confirm assets are continued with
 				return err
 			}
 			defer s.close()
-			ctx := context.Background()
+			ctx := cmd.Context()
 			recs, err := s.store.List(ctx)
 			if err != nil {
 				return err

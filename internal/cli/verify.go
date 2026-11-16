@@ -25,7 +25,7 @@ Read-only towards Immich: replacements are downloaded to the work directory,
 checked and deleted. Exits non-zero if any replacement has a problem.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			stopping := atomic.Bool{}
-			ctx, stop := a.interruptible(func() { stopping.Store(true) })
+			ctx, stop := a.interruptible(cmd.Context(), func() { stopping.Store(true) })
 			defer stop()
 			s, err := a.preflight(ctx, preflightOpts{perms: permsDryRun, needTools: true})
 			if err != nil {

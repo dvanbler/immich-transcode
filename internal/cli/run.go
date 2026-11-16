@@ -53,7 +53,7 @@ from the validated encode.`,
 				f.crf = a.cfg.CRF
 			}
 			a.cfg.CRF = f.crf
-			return a.process(f, func(ctx context.Context, s *session) ([]string, error) {
+			return a.process(cmd.Context(), f, func(ctx context.Context, s *session) ([]string, error) {
 				if len(f.assets) > 0 {
 					return f.assets, nil
 				}
@@ -101,7 +101,7 @@ the pipeline (including encodes validated by a dry run) and pending ones,
 such as assets sent back by reset. Unlike run, resume does not search Immich
 for new candidates.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return a.process(f, func(ctx context.Context, s *session) ([]string, error) {
+			return a.process(cmd.Context(), f, func(ctx context.Context, s *session) ([]string, error) {
 				recs, err := s.store.List(ctx)
 				if err != nil {
 					return nil, err
@@ -143,7 +143,7 @@ func resumable(st manifest.State, f runFlags) bool {
 }
 
 // process runs the pipeline over the ids chosen by pick.
-func (a *app) process(f runFlags, pick func(context.Context, *session) ([]string, error)) error {
+func (a *app) process(parent context.Context, f runFlags, pick func(context.Context, *session) ([]string, error)) error {
 	perms := permsDryRun
 	if f.apply {
 		perms = permsApply
@@ -151,7 +151,7 @@ func (a *app) process(f runFlags, pick func(context.Context, *session) ([]string
 	// Created before the signal handler so a Ctrl-C during preflight or the
 	// candidate search is remembered; its other fields are filled in below.
 	proc := &pipeline.Processor{}
-	ctx, stop := a.interruptible(proc.RequestStop)
+	ctx, stop := a.interruptible(parent, proc.RequestStop)
 	defer stop()
 	s, err := a.preflight(ctx, preflightOpts{perms: perms, needTools: true})
 	if err != nil {

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"maps"
 	"slices"
@@ -45,7 +44,7 @@ skips, the reason. Skipped and restored assets are hidden unless --all or
 				return err
 			}
 			defer s.close()
-			recs, err := s.store.List(context.Background())
+			recs, err := s.store.List(cmd.Context())
 			if err != nil {
 				return err
 			}

@@ -40,9 +40,9 @@ status.`,
 				return fmt.Errorf("choose the assets to restore with --asset")
 			}
 			if !f.apply {
-				return a.restorePlan(f.assets)
+				return a.restorePlan(cmd.Context(), f.assets)
 			}
-			return a.process(f, func(ctx context.Context, s *session) ([]string, error) {
+			return a.process(cmd.Context(), f, func(ctx context.Context, s *session) ([]string, error) {
 				var ids []string
 				for _, id := range f.assets {
 					r, ok, err := s.store.Get(ctx, id)
@@ -79,8 +79,9 @@ status.`,
 }
 
 // restorePlan reports, without changing anything, what restore would do.
-func (a *app) restorePlan(ids []string) error {
-	ctx := context.Background()
+func (a *app) restorePlan(parent context.Context, ids []string) error {
+	ctx, stop := a.interruptible(parent, nil)
+	defer stop()
 	s, err := a.preflight(ctx, preflightOpts{perms: permsRead})
 	if err != nil {
 		return err

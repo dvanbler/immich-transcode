@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -67,7 +68,7 @@ The API key is read from the ` + config.APIKeyEnv + ` environment variable.`,
 
 	root.SetVersionTemplate("immich-transcode {{.Version}}\n")
 	root.AddCommand(a.scanCmd(), a.runCmd(), a.statusCmd(), a.resumeCmd(), a.resetCmd(), a.verifyCmd(), a.redoCmd(), a.restoreCmd(), a.configCmd())
-	if err := root.Execute(); err != nil {
+	if err := root.ExecuteContext(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
 	}
@@ -198,25 +199,38 @@ func (a *app) openLocal(s *session) error {
 	return nil
 }
 
-// interruptible returns a context that is cancelled on the second Ctrl-C;
-// the first calls onFirst so work can stop at a step boundary.
-func (a *app) interruptible(onFirst func()) (context.Context, func()) {
-	ctx, cancel := context.WithCancel(context.Background())
+// interruptible returns a context derived from parent that Ctrl-C (or
+// SIGTERM) cancels. With onFirst set, the first signal only calls onFirst, so
+// work can stop at a step boundary, and the second cancels. Once the context
+// is cancelled the signals go back to their default action, so one more
+// Ctrl-C ends the process outright. stop releases the handler.
+func (a *app) interruptible(parent context.Context, onFirst func()) (ctx context.Context, stop func()) {
+	ctx, cancel := context.WithCancel(parent)
 	sigs := make(chan os.Signal, 2)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	done := make(chan struct{})
 	go func() {
-		n := 0
-		for range sigs {
-			n++
-			if n == 1 && onFirst != nil {
-				a.console.Printf("\nStopping after the current step (Ctrl-C again to abort it and clean up)...")
-				onFirst()
-				continue
+		defer signal.Stop(sigs)
+		graceful := onFirst != nil
+		for {
+			select {
+			case <-done:
+				return
+			case <-sigs:
+				if graceful {
+					graceful = false
+					a.console.Printf("\nStopping after the current step (Ctrl-C again to abort it and clean up)...")
+					onFirst()
+					continue
+				}
+				a.console.Printf("\nAborting...")
+				cancel()
+				return
 			}
-			a.console.Printf("\nAborting current step...")
-			cancel()
-			return
 		}
 	}()
-	return ctx, func() { signal.Stop(sigs); cancel() }
+	return ctx, sync.OnceFunc(func() {
+		close(done)
+		cancel()
+	})
 }

@@ -30,7 +30,7 @@ Asset ids are the original ids, as shown by status and verify.`,
 			if len(f.assets) == 0 {
 				return fmt.Errorf("choose the assets to redo with --asset")
 			}
-			return a.process(f, func(ctx context.Context, s *session) ([]string, error) {
+			return a.process(cmd.Context(), f, func(ctx context.Context, s *session) ([]string, error) {
 				var ids []string
 				for _, id := range f.assets {
 					r, ok, err := s.store.Get(ctx, id)
