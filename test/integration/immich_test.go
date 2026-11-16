@@ -477,7 +477,7 @@ func waitMetadata(t *testing.T, c *immich.Client, id, name string) {
 
 func buildBinary(t *testing.T) string {
 	bin := filepath.Join(t.TempDir(), "immich-transcode")
-	cmd := exec.Command("go", "build", "-o", bin, "immich-transcode")
+	cmd := exec.Command("go", "build", "-o", bin, "github.com/dvanbler/immich-transcode")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v %s", err, out)
 	}
