@@ -3,7 +3,6 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"math"
 	"os"
 	"sync/atomic"
 	"time"
@@ -256,7 +255,7 @@ func Diff(oldA, newA *immich.Asset) (api.UpdateAssetDto, []string) {
 		fields = append(fields, "dateTimeOriginal")
 	}
 	if oe.Latitude != nil && oe.Longitude != nil &&
-		(!sameCoord(oe.Latitude, ne.Latitude) || !sameCoord(oe.Longitude, ne.Longitude)) {
+		(!media.SameCoord(oe.Latitude, ne.Latitude) || !media.SameCoord(oe.Longitude, ne.Longitude)) {
 		dto.Latitude, dto.Longitude = oe.Latitude, oe.Longitude
 		fields = append(fields, "location")
 	}
@@ -352,7 +351,7 @@ func TimelineMismatch(oldA, newA *immich.Asset) string {
 		return fmt.Sprintf("localDateTime %s vs original %s", newA.LocalDateTime.Format(time.RFC3339), oldA.LocalDateTime.Format(time.RFC3339))
 	}
 	oe, ne := exif(oldA), exif(newA)
-	if !sameCoord(oe.Latitude, ne.Latitude) || !sameCoord(oe.Longitude, ne.Longitude) {
+	if !media.SameCoord(oe.Latitude, ne.Latitude) || !media.SameCoord(oe.Longitude, ne.Longitude) {
 		return fmt.Sprintf("location %s vs original %s", coord(ne), coord(oe))
 	}
 	return ""
@@ -419,13 +418,6 @@ func strOr(s *string) string {
 		return ""
 	}
 	return *s
-}
-
-func sameCoord(a, b *float64) bool {
-	if a == nil || b == nil {
-		return a == nil && b == nil
-	}
-	return math.Abs(*a-*b) < 1e-5
 }
 
 func coord(e api.ExifResponseDto) string {

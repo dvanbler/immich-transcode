@@ -93,13 +93,15 @@ func CompareMeta(orig, out Meta) string {
 	if orig.CreationDate != out.CreationDate {
 		return fmt.Sprintf("CreationDate %q became %q", orig.CreationDate, out.CreationDate)
 	}
-	if !sameCoord(orig.GPSLatitude, out.GPSLatitude) || !sameCoord(orig.GPSLongitude, out.GPSLongitude) {
+	if !SameCoord(orig.GPSLatitude, out.GPSLatitude) || !SameCoord(orig.GPSLongitude, out.GPSLongitude) {
 		return fmt.Sprintf("GPS %s became %s", fmtCoord(orig), fmtCoord(out))
 	}
 	return ""
 }
 
-func sameCoord(a, b *float64) bool {
+// SameCoord reports whether two optional coordinates (degrees) agree to
+// within about a metre; both absent counts as agreeing.
+func SameCoord(a, b *float64) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
 	}

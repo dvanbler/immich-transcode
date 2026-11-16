@@ -577,7 +577,7 @@ func TestLocationDriftIsPatched(t *testing.T) {
 		t.Fatalf("outcome %+v", o)
 	}
 	newA := e.fake.assets[e.state(id).NewAssetID]
-	if !sameCoord(newA.ExifInfo.Latitude, e.fake.assets[id].ExifInfo.Latitude) {
+	if !media.SameCoord(newA.ExifInfo.Latitude, e.fake.assets[id].ExifInfo.Latitude) {
 		t.Errorf("latitude %v not patched", *newA.ExifInfo.Latitude)
 	}
 }
