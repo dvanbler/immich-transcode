@@ -51,14 +51,17 @@ func (p *Processor) faceGate(ctx context.Context, rec *manifest.Record) (bool, s
 }
 
 func (p *Processor) upload(ctx context.Context, rec *manifest.Record, asset *immich.Asset) (manifest.State, string, error) {
+	// Hashed at most once: the file can be many GB.
+	var hexSum string
 	if rec.SourceAssetID != "" && rec.Mode != manifest.ModeRestore {
 		// Redo: if the fresh encode is byte-identical to the current
 		// replacement (same ffmpeg and settings), there is nothing to
 		// replace. Keep the current one.
-		_, b64, err := immich.FileSHA1(rec.OutputPath)
+		sum, b64, err := immich.FileSHA1(rec.OutputPath)
 		if err != nil {
 			return "", "", err
 		}
+		hexSum = sum
 		if b64 == asset.Checksum {
 			kept := rec.SourceAssetID
 			rec.NewAssetID, rec.SourceAssetID = kept, ""
@@ -74,9 +77,10 @@ func (p *Processor) upload(ctx context.Context, rec *manifest.Record, asset *imm
 		rec.ResumeFrom = manifest.Validated
 		return manifest.NeedsConfirm, why, nil
 	}
-	hexSum, _, err := immich.FileSHA1(rec.OutputPath)
-	if err != nil {
-		return "", "", err
+	if hexSum == "" {
+		if hexSum, _, err = immich.FileSHA1(rec.OutputPath); err != nil {
+			return "", "", err
+		}
 	}
 	name := media.OutputName(asset.OriginalFileName, media.ContainerFor(asset.OriginalFileName))
 	if rec.Mode == manifest.ModeRestore {
