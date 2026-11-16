@@ -108,6 +108,7 @@ func Open(path string) (*Store, error) {
 // The schema constant above is version 0.
 var migrations = []func(context.Context, *sql.Tx) error{
 	addRedoColumns,
+	fixedWidthTimestamps,
 }
 
 // migrate applies the steps a manifest has not had yet, each in its own
@@ -174,6 +175,59 @@ func addRedoColumns(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
+// timeLayout is RFC 3339 in UTC with all nine fractional digits, so stored
+// timestamps sort as text in time order. time.RFC3339Nano drops trailing
+// zeros, which puts "…:00Z" after "…:00.5Z". Either parses with RFC3339Nano.
+const timeLayout = "2006-01-02T15:04:05.000000000Z07:00"
+
+func formatTime(t time.Time) string { return t.UTC().Format(timeLayout) }
+
+// fixedWidthTimestamps rewrites timestamps stored by earlier builds in
+// timeLayout. Values that do not parse are left as they are.
+func fixedWidthTimestamps(ctx context.Context, tx *sql.Tx) error {
+	for _, c := range []struct{ table, column string }{
+		{"assets", "created_at"}, {"assets", "updated_at"}, {"events", "at"},
+	} {
+		if err := rewriteTimestamps(ctx, tx, c.table, c.column); err != nil {
+			return fmt.Errorf("%s.%s: %w", c.table, c.column, err)
+		}
+	}
+	return nil
+}
+
+func rewriteTimestamps(ctx context.Context, tx *sql.Tx, table, column string) error {
+	rows, err := tx.QueryContext(ctx, `SELECT rowid, `+column+` FROM `+table)
+	if err != nil {
+		return err
+	}
+	changed := map[int64]string{}
+	for rows.Next() {
+		var id int64
+		var old string
+		if err := rows.Scan(&id, &old); err != nil {
+			rows.Close()
+			return err
+		}
+		t, err := time.Parse(time.RFC3339Nano, old)
+		if err != nil {
+			continue
+		}
+		if fixed := formatTime(t); fixed != old {
+			changed[id] = fixed
+		}
+	}
+	// The single connection cannot run the updates while rows is open.
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return err
+	}
+	for id, fixed := range changed {
+		if _, err := tx.ExecContext(ctx, `UPDATE `+table+` SET `+column+` = ? WHERE rowid = ?`, fixed, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Store) Close() error { return s.db.Close() }
 
 const cols = `asset_id, file_name, state, resume_from, original_size, new_size, crf,
@@ -202,7 +256,7 @@ func (s *Store) Get(ctx context.Context, id string) (Record, bool, error) {
 
 // Ensure returns the existing record for id or inserts a Pending one.
 func (s *Store) Ensure(ctx context.Context, id, fileName string, size int64) (Record, error) {
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	now := formatTime(time.Now())
 	_, err := s.db.ExecContext(ctx, `INSERT INTO assets (asset_id, file_name, state, original_size, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(asset_id) DO NOTHING`, id, fileName, Pending, size, now, now)
 	if err != nil {
@@ -231,7 +285,7 @@ func (s *Store) Transition(ctx context.Context, r *Record, to State, msg string)
 		detail=?, updated_at=?
 		WHERE asset_id=? AND state=?`,
 		r.FileName, to, r.ResumeFrom, r.OriginalSize, r.NewSize, r.CRF, r.BackupPath, r.OutputPath,
-		r.NewAssetID, r.SourceAssetID, r.Mode, r.Error, r.People, r.Detail, now.Format(time.RFC3339Nano), r.AssetID, r.State)
+		r.NewAssetID, r.SourceAssetID, r.Mode, r.Error, r.People, r.Detail, formatTime(now), r.AssetID, r.State)
 	if err != nil {
 		return err
 	}
@@ -239,7 +293,7 @@ func (s *Store) Transition(ctx context.Context, r *Record, to State, msg string)
 		return fmt.Errorf("manifest row for %s is not in state %s (changed by another process?)", r.AssetID, r.State)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO events (asset_id, at, from_state, to_state, message) VALUES (?, ?, ?, ?, ?)`,
-		r.AssetID, now.Format(time.RFC3339Nano), r.State, to, msg); err != nil {
+		r.AssetID, formatTime(now), r.State, to, msg); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

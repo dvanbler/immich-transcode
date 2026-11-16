@@ -3,6 +3,7 @@ package manifest
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -170,6 +171,86 @@ func TestSchemaVersion(t *testing.T) {
 	if st, err := Open(path); err == nil {
 		st.Close()
 		t.Error("opened a manifest with a newer schema version")
+	}
+}
+
+// Timestamps written by earlier builds dropped trailing zeros, which does
+// not sort as text; the upgrade rewrites them at a fixed width.
+func TestTimestampsSortAsText(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "m.db")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, at := range map[string]string{
+		"whole-second": "2026-01-01T00:00:00Z",
+		"half-later":   "2026-01-01T00:00:00.5Z",
+		"unparseable":  "not a time",
+	} {
+		if _, err := st.db.Exec(`INSERT INTO assets (asset_id, state, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+			id, Pending, at, at); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.db.Exec(`INSERT INTO events (asset_id, at, from_state, to_state) VALUES (?, ?, '', ?)`, id, at, Pending); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Back to the version before timestamps were fixed.
+	if _, err := st.db.Exec(`PRAGMA user_version = 1`); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	if st, err = Open(path); err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	stored := func(query, id string) string {
+		t.Helper()
+		var s string
+		if err := st.db.QueryRow(query, id).Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	for id, want := range map[string]string{
+		"whole-second": "2026-01-01T00:00:00.000000000Z",
+		"half-later":   "2026-01-01T00:00:00.500000000Z",
+		"unparseable":  "not a time",
+	} {
+		for _, q := range []string{
+			`SELECT updated_at FROM assets WHERE asset_id = ?`,
+			`SELECT created_at FROM assets WHERE asset_id = ?`,
+			`SELECT at FROM events WHERE asset_id = ?`,
+		} {
+			if got := stored(q, id); got != want {
+				t.Errorf("%s (%s): %q, want %q", id, q, got, want)
+			}
+		}
+	}
+
+	// A new row is written at the same width, and List's "most recently
+	// updated first" now holds within a second.
+	if _, err := st.Ensure(ctx, "new", "clip.mp4", 1); err != nil {
+		t.Fatal(err)
+	}
+	if got := stored(`SELECT updated_at FROM assets WHERE asset_id = ?`, "new"); len(got) != len(timeLayout)-len("07:00") {
+		t.Errorf("new timestamp %q is not fixed width", got)
+	}
+	if _, err := st.db.Exec(`DELETE FROM assets WHERE asset_id = 'unparseable'`); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := st.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	for _, r := range recs {
+		order = append(order, r.AssetID)
+	}
+	if want := []string{"new", "half-later", "whole-second"}; !slices.Equal(order, want) {
+		t.Errorf("List order %v, want %v", order, want)
 	}
 }
 
