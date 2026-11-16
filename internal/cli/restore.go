@@ -42,7 +42,6 @@ status.`,
 			if !f.apply {
 				return a.restorePlan(f.assets)
 			}
-			f.crf = a.cfg.CRF
 			return a.process(f, func(ctx context.Context, s *session) ([]string, error) {
 				var ids []string
 				for _, id := range f.assets {
