@@ -31,7 +31,7 @@ func CopyMetadataArgs(orig, out string) []string {
 
 // CopyMetadata runs exiftool with CopyMetadataArgs.
 func (t Tools) CopyMetadata(ctx context.Context, orig, out string) error {
-	_, _, err := runCapture(ctx, t.ExifTool, CopyMetadataArgs(orig, out)...)
+	_, err := runCapture(ctx, t.ExifTool, CopyMetadataArgs(orig, out)...)
 	return err
 }
 
@@ -45,7 +45,7 @@ type Meta struct {
 
 // ReadMeta reads Meta from path.
 func (t Tools) ReadMeta(ctx context.Context, path string) (Meta, error) {
-	out, _, err := runCapture(ctx, t.ExifTool, "-api", "LargeFileSupport=1", "-j", "-n",
+	out, err := runCapture(ctx, t.ExifTool, "-api", "LargeFileSupport=1", "-j", "-n",
 		"-QuickTime:CreateDate", "-Keys:CreationDate", "-GPSLatitude", "-GPSLongitude", path)
 	if err != nil {
 		return Meta{}, err

@@ -103,7 +103,7 @@ func command(ctx context.Context, name string, args ...string) *exec.Cmd {
 }
 
 // runCapture runs a command and returns stdout, folding stderr into errors.
-func runCapture(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
+func runCapture(ctx context.Context, name string, args ...string) ([]byte, error) {
 	cmd := command(ctx, name, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -111,14 +111,14 @@ func runCapture(ctx context.Context, name string, args ...string) ([]byte, []byt
 	err := cmd.Run()
 	if err != nil {
 		if ctx.Err() != nil {
-			return stdout.Bytes(), stderr.Bytes(), ctx.Err()
+			return stdout.Bytes(), ctx.Err()
 		}
 		if !exitedNonZero(err) {
-			return stdout.Bytes(), stderr.Bytes(), fmt.Errorf("%s: %w: %w", baseName(name), ErrToolFailed, err)
+			return stdout.Bytes(), fmt.Errorf("%s: %w: %w", baseName(name), ErrToolFailed, err)
 		}
-		return stdout.Bytes(), stderr.Bytes(), fmt.Errorf("%s: %w: %s", baseName(name), err, tail(stderr.String(), 2000))
+		return stdout.Bytes(), fmt.Errorf("%s: %w: %s", baseName(name), err, tail(stderr.String(), 2000))
 	}
-	return stdout.Bytes(), stderr.Bytes(), nil
+	return stdout.Bytes(), nil
 }
 
 func baseName(p string) string {
