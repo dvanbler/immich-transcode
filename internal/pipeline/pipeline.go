@@ -311,8 +311,6 @@ func (p *Processor) prepare(ctx context.Context, rec *manifest.Record, asset *im
 		if !p.Opts.AllowFaceLoss {
 			return fmt.Errorf("has named people (%s); use --allow-face-loss to proceed", rec.People)
 		}
-	case manifest.Done:
-		return errNothingToDo
 	}
 	if rec.State.Permanent() {
 		return errNothingToDo
