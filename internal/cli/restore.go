@@ -37,7 +37,7 @@ status.`,
   immich-transcode restore --asset e5a7d64b-e29c-46d2-bb04-df0044428c85 --apply`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if len(f.assets) == 0 {
-				return fmt.Errorf("choose the assets to restore with --asset")
+				return errors.New("choose the assets to restore with --asset")
 			}
 			if !f.apply {
 				return a.restorePlan(cmd.Context(), f.assets)

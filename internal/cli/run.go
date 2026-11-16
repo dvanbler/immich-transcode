@@ -238,7 +238,7 @@ func (a *app) process(parent context.Context, f runFlags, pick func(context.Cont
 	}
 	s.log.Info("run end", "processed", len(outcomes), "saved_bytes", saved, "errors", failed)
 	if interrupted || len(outcomes) < len(ids) {
-		return fmt.Errorf("interrupted; run `immich-transcode resume` to continue")
+		return errors.New("interrupted; run `immich-transcode resume` to continue")
 	}
 	if failed > 0 {
 		return fmt.Errorf("%d asset(s) had errors; see `immich-transcode status` and %s", failed, s.cfg.LogFile)

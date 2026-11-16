@@ -3,6 +3,7 @@ package media
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -191,7 +192,7 @@ func ParseProbe(data []byte) (Probe, error) {
 		}
 	}
 	if !p.HasVid {
-		return p, fmt.Errorf("no video stream")
+		return p, errors.New("no video stream")
 	}
 	return p, nil
 }

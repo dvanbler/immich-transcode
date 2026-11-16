@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -102,7 +103,7 @@ func Load(path string, required bool) (Config, error) {
 	cfg := Default()
 	data, err := os.ReadFile(path)
 	switch {
-	case errors.Is(err, os.ErrNotExist) && !required:
+	case errors.Is(err, fs.ErrNotExist) && !required:
 	case err != nil:
 		return cfg, fmt.Errorf("read config: %w", err)
 	default:

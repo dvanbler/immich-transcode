@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -111,9 +112,9 @@ func (a *app) loadConfig(cmd *cobra.Command) error {
 // Permission sets per mode.
 var (
 	permsRead   = []api.Permission{api.AssetRead, api.UserRead}
-	permsDryRun = append(append([]api.Permission{}, permsRead...), api.AssetDownload)
-	permsApply  = append(append([]api.Permission{}, permsDryRun...),
-		api.AssetUpload, api.AssetUpdate, api.AssetCopy, api.AssetDelete, api.TagAsset)
+	permsDryRun = slices.Concat(permsRead, []api.Permission{api.AssetDownload})
+	permsApply  = slices.Concat(permsDryRun, []api.Permission{
+		api.AssetUpload, api.AssetUpdate, api.AssetCopy, api.AssetDelete, api.TagAsset})
 )
 
 // session is everything a command needs after preflight.

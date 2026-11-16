@@ -3,8 +3,9 @@
 package selection
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 
 	"immich-transcode/internal/config"
 	"immich-transcode/internal/media"
@@ -90,7 +91,7 @@ func PreFilter(e Estimate, minSize int64, minBPP float64) Rejection {
 // Rank sorts candidates by estimated savings, largest first. savings returns
 // the estimate for one item.
 func Rank[T any](items []T, savings func(T) int64) {
-	sort.SliceStable(items, func(i, j int) bool { return savings(items[i]) > savings(items[j]) })
+	slices.SortStableFunc(items, func(a, b T) int { return cmp.Compare(savings(b), savings(a)) })
 }
 
 // Verdict is the outcome of inspecting a probed source file.

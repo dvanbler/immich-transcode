@@ -2,7 +2,9 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -122,7 +124,7 @@ func (p *Processor) upload(ctx context.Context, rec *manifest.Record, asset *imm
 func (p *Processor) adoptDuplicate(ctx context.Context, rec *manifest.Record, id string) error {
 	restoringOriginal := rec.Mode == manifest.ModeRestore && id == rec.AssetID
 	if id == rec.Source() || (id == rec.AssetID && !restoringOriginal) {
-		return fmt.Errorf("server reports the upload as a duplicate of the asset it replaces")
+		return errors.New("server reports the upload as a duplicate of the asset it replaces")
 	}
 	// A restore whose original is still in the trash lands here: the backup
 	// has the original's checksum. Restoring it brings back the original
@@ -400,7 +402,7 @@ func (p *Processor) complete(rec *manifest.Record) (manifest.State, string, erro
 		return manifest.Restored, how, nil
 	}
 	if rec.OutputPath != "" && rec.OutputPath != rec.BackupPath {
-		if err := os.Remove(rec.OutputPath); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(rec.OutputPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			p.Log.Warn("could not remove work file", "path", rec.OutputPath, "err", err)
 		}
 	}

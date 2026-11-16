@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -26,7 +27,7 @@ Done assets cannot be reset, and needs_confirm assets are continued with
   immich-transcode reset --asset 62446a94-8936-4572-a8f4-a389841bc9a7`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if len(states) == 0 && len(assets) == 0 {
-				return fmt.Errorf("choose what to reset with --state and/or --asset")
+				return errors.New("choose what to reset with --state and/or --asset")
 			}
 			cfg := a.cfg
 			if err := cfg.Finalize(); err != nil {

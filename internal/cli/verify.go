@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"sync/atomic"
 
@@ -105,7 +106,7 @@ checked and deleted. Exits non-zero if any replacement has a problem.`,
 			}
 			switch {
 			case checked < len(recs):
-				return fmt.Errorf("interrupted")
+				return errors.New("interrupted")
 			case len(bad) > 0 || len(failed) > 0:
 				return fmt.Errorf("%d replacement(s) with problems, %d not checked", len(bad), len(failed))
 			}

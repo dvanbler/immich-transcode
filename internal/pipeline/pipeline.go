@@ -326,7 +326,7 @@ func (p *Processor) prepare(ctx context.Context, rec *manifest.Record, asset *im
 		}
 	}
 	if asset.IsTrashed && !rec.State.Remote() && rec.State != manifest.Trashed {
-		return fmt.Errorf("original is in the trash; not processing")
+		return errors.New("original is in the trash; not processing")
 	}
 	return p.reconcileLocal(ctx, rec)
 }

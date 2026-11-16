@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -28,7 +29,7 @@ Asset ids are the original ids, as shown by status and verify.`,
 		Example: `  immich-transcode redo --asset e5a7d64b-e29c-46d2-bb04-df0044428c85 --apply`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if len(f.assets) == 0 {
-				return fmt.Errorf("choose the assets to redo with --asset")
+				return errors.New("choose the assets to redo with --asset")
 			}
 			return a.process(cmd.Context(), f, func(ctx context.Context, s *session) ([]string, error) {
 				var ids []string

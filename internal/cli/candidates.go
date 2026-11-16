@@ -1,8 +1,9 @@
 package cli
 
 import (
+	"cmp"
 	"context"
-	"sort"
+	"slices"
 	"time"
 
 	"immich-transcode/internal/config"
@@ -75,7 +76,10 @@ func findCandidates(ctx context.Context, s *session, minSize int64, cutoff confi
 	for r, n := range excluded {
 		ex = append(ex, exclusion{r, n})
 	}
-	sort.Slice(ex, func(i, j int) bool { return ex[i].count > ex[j].count })
+	// Most common first; by name within a count, so the order is stable.
+	slices.SortFunc(ex, func(a, b exclusion) int {
+		return cmp.Or(cmp.Compare(b.count, a.count), cmp.Compare(a.reason, b.reason))
+	})
 	return out, ex, nil
 }
 
