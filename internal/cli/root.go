@@ -81,11 +81,11 @@ func (a *app) loadConfig(cmd *cobra.Command) error {
 	if path == "" {
 		path, required = config.DefaultPath(), false
 	}
-	cfg, err := config.Load(path, required)
+	cfg, found, err := config.Load(path, required)
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(path); err == nil {
+	if found {
 		a.loadedPath = path
 	}
 	set := func(name string, dst *string, v string) {

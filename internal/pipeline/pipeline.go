@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"sync"
@@ -351,7 +352,16 @@ func (p *Processor) reconcileLocal(ctx context.Context, rec *manifest.Record) er
 		return nil
 	}
 	target, why := rec.State, ""
-	backupMissing := rec.BackupPath == "" || !exists(rec.BackupPath)
+	backupMissing, err := missing(rec.BackupPath)
+	if err != nil {
+		return err
+	}
+	outputMissing := false
+	if hasLocalEncode(rec.State) {
+		if outputMissing, err = missing(rec.OutputPath); err != nil {
+			return err
+		}
+	}
 	if backupMissing && rec.SourceAssetID != "" {
 		// Downloading "the original" would fetch the previous replacement.
 		return fmt.Errorf("cannot redo: the backup of the original (%s) is missing", rec.BackupPath)
@@ -359,7 +369,7 @@ func (p *Processor) reconcileLocal(ctx context.Context, rec *manifest.Record) er
 	switch {
 	case backupMissing:
 		target, why = manifest.Pending, "rewind: backup missing"
-	case hasLocalEncode(rec.State) && (rec.OutputPath == "" || !exists(rec.OutputPath)):
+	case outputMissing:
 		target, why = manifest.Probed, "rewind: work file missing"
 	case p.Opts.Reencodes(*rec):
 		target, why = manifest.Probed, fmt.Sprintf("rewind: re-encode at crf %d (was %d)", p.Opts.CRF, rec.CRF)
@@ -443,9 +453,24 @@ func fileSize(a *immich.Asset) int64 {
 	return 0
 }
 
-func exists(path string) bool {
+// exists reports whether path is there. Only "no such file" is a no: any
+// other failure (permissions, an unmounted disk) is returned, so it cannot
+// be mistaken for a file that needs to be made again.
+func exists(path string) (bool, error) {
 	_, err := os.Stat(path)
-	return err == nil
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// missing is exists inverted, counting an unrecorded ("") path as missing.
+func missing(path string) (bool, error) {
+	if path == "" {
+		return true, nil
+	}
+	ok, err := exists(path)
+	return !ok, err
 }
 
 func pct(oldSize, newSize int64) float64 {

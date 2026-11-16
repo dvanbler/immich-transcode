@@ -357,6 +357,12 @@ func setup(t *testing.T) *env {
 	return &env{t: t, fake: fake, store: store, proc: proc, set: fixtures}
 }
 
+// present reports whether a file exists, for assertions.
+func present(path string) bool {
+	ok, _ := exists(path)
+	return ok
+}
+
 func (e *env) state(id string) manifest.Record {
 	e.t.Helper()
 	r, ok, err := e.store.Get(context.Background(), id)
@@ -377,7 +383,7 @@ func TestDryRunStopsBeforeUpload(t *testing.T) {
 		t.Fatal("dry run touched the server")
 	}
 	r := e.state(id)
-	if !exists(r.BackupPath) || !exists(r.OutputPath) {
+	if !present(r.BackupPath) || !present(r.OutputPath) {
 		t.Fatal("backup or output missing")
 	}
 	// Applying later continues from the validated encode.
@@ -426,10 +432,10 @@ func TestApplyPortrait(t *testing.T) {
 	if len(e.fake.updates) != 1 || e.fake.updates[0].Description == nil || e.fake.updates[0].Rating == nil {
 		t.Errorf("expected one update with description and rating, got %+v", e.fake.updates)
 	}
-	if exists(r.OutputPath) {
+	if present(r.OutputPath) {
 		t.Error("work file not removed")
 	}
-	if !exists(r.BackupPath) {
+	if !present(r.BackupPath) {
 		t.Error("backup removed")
 	}
 	if r.NewSize <= 0 || r.NewSize >= r.OriginalSize || r.CRF != 28 {
@@ -512,7 +518,7 @@ func TestLowGain(t *testing.T) {
 	if o.State != manifest.SkippedLowGain {
 		t.Fatalf("outcome %+v", o)
 	}
-	if exists(e.state(id).OutputPath) {
+	if present(e.state(id).OutputPath) {
 		t.Error("low-gain output not discarded")
 	}
 }
@@ -1074,7 +1080,7 @@ func checkRestored(t *testing.T, e *env, id, repl, restoredID string) {
 		t.Errorf("description %v not carried over from the replacement", a.ExifInfo.Description)
 	case len(e.fake.albums[restoredID]) != 2:
 		t.Errorf("albums %v not carried over", e.fake.albums[restoredID])
-	case !exists(rec.BackupPath):
+	case !present(rec.BackupPath):
 		t.Error("backup deleted")
 	}
 	b1, _ := os.ReadFile(rec.BackupPath)

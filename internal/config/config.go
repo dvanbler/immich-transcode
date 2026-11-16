@@ -98,23 +98,25 @@ func DefaultPath() string {
 }
 
 // Load reads path over the defaults. A missing file is not an error unless
-// required is set (the user named it explicitly).
-func Load(path string, required bool) (Config, error) {
-	cfg := Default()
+// required is set (the user named it explicitly); found reports whether a
+// file was read.
+func Load(path string, required bool) (cfg Config, found bool, err error) {
+	cfg = Default()
 	data, err := os.ReadFile(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist) && !required:
 	case err != nil:
-		return cfg, fmt.Errorf("read config: %w", err)
+		return cfg, false, fmt.Errorf("read config: %w", err)
 	default:
+		found = true
 		dec := yaml.NewDecoder(bytes.NewReader(data))
 		dec.KnownFields(true)
 		if err := dec.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
-			return cfg, fmt.Errorf("parse config %s: %w", path, err)
+			return cfg, found, fmt.Errorf("parse config %s: %w", path, err)
 		}
 	}
 	cfg.APIKey = os.Getenv(APIKeyEnv)
-	return cfg, nil
+	return cfg, found, nil
 }
 
 // Finalize fills derived defaults and validates. Call after flag overrides.

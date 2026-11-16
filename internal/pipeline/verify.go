@@ -23,7 +23,9 @@ func VerifyReplacement(ctx context.Context, im Immich, tools media.Tools, rec ma
 	if rec.NewAssetID == "" {
 		return "", errors.New("no replacement asset recorded")
 	}
-	if !exists(rec.BackupPath) {
+	if gone, err := missing(rec.BackupPath); err != nil {
+		return "", err
+	} else if gone {
 		return "", fmt.Errorf("backup %s is missing", rec.BackupPath)
 	}
 	if err := os.MkdirAll(workDir, 0o755); err != nil {

@@ -35,9 +35,9 @@ func TestLoad(t *testing.T) {
 	p := filepath.Join(dir, "c.yaml")
 	os.WriteFile(p, []byte("server_url: http://nas:2283/\nbackup_dir: /mnt/backup\ncrf: 24\nmin_size: 500MB\nbpp:\n  h264: 0.2\n"), 0o644)
 	t.Setenv(APIKeyEnv, "secret")
-	c, err := Load(p, true)
-	if err != nil {
-		t.Fatal(err)
+	c, found, err := Load(p, true)
+	if err != nil || !found {
+		t.Fatalf("found=%v err=%v", found, err)
 	}
 	if err := c.Finalize(); err != nil {
 		t.Fatal(err)
@@ -53,13 +53,13 @@ func TestLoad(t *testing.T) {
 	}
 
 	os.WriteFile(p, []byte("crf: 24\nbogus: 1\n"), 0o644)
-	if _, err := Load(p, true); err == nil {
+	if _, _, err := Load(p, true); err == nil {
 		t.Error("unknown key accepted")
 	}
-	if _, err := Load(filepath.Join(dir, "missing.yaml"), false); err != nil {
+	if _, found, err := Load(filepath.Join(dir, "missing.yaml"), false); err != nil || found {
 		t.Errorf("optional missing file: %v", err)
 	}
-	if _, err := Load(filepath.Join(dir, "missing.yaml"), true); err == nil {
+	if _, _, err := Load(filepath.Join(dir, "missing.yaml"), true); err == nil {
 		t.Error("required missing file accepted")
 	}
 }
@@ -88,7 +88,7 @@ func TestYAMLRoundTrip(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "c.yaml")
 	os.WriteFile(p, out, 0o644)
 	t.Setenv(APIKeyEnv, "secret")
-	got, err := Load(p, true)
+	got, _, err := Load(p, true)
 	if err != nil {
 		t.Fatalf("output does not load: %v\n%s", err, out)
 	}

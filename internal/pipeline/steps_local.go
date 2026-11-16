@@ -42,7 +42,11 @@ func sanitizeName(name string) string {
 func (p *Processor) download(ctx context.Context, rec *manifest.Record, asset *immich.Asset) (manifest.State, string, error) {
 	path := BackupPath(p.Cfg.BackupDir, asset)
 	rec.BackupPath = path
-	if exists(path) {
+	have, err := exists(path)
+	if err != nil {
+		return "", "", err
+	}
+	if have {
 		_, sum, err := immich.FileSHA1(path)
 		if err != nil {
 			return "", "", err
