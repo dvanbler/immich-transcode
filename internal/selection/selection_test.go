@@ -37,24 +37,23 @@ func TestEstimatesUnknownDuration(t *testing.T) {
 	}
 }
 
-func TestPreReason(t *testing.T) {
+func TestPreFilter(t *testing.T) {
 	big := Estimates(1_000_000_000, 100, 1920, 1080, 0.05)
 	cases := []struct {
 		name string
 		e    Estimate
-		want bool // rejected
+		want Rejection
 	}{
-		{"candidate", big, false},
-		{"too small", Estimates(50_000_000, 10, 1920, 1080, 0.05), true},
-		{"no duration", Estimates(1_000_000_000, 0, 1920, 1080, 0.05), true},
-		{"no dimensions", Estimates(1_000_000_000, 100, 0, 0, 0.05), true},
+		{"candidate", big, Candidate},
+		{"too small", Estimates(50_000_000, 10, 1920, 1080, 0.05), TooSmall},
+		{"no duration", Estimates(1_000_000_000, 0, 1920, 1080, 0.05), UnknownDuration},
+		{"no dimensions", Estimates(1_000_000_000, 100, 0, 0, 0.05), UnknownDimensions},
 		// 200 MB over 600 s at 1080p ≈ 0.043 bpp: already efficient.
-		{"efficient", Estimates(200_000_000, 600, 1920, 1080, 0.05), true},
+		{"efficient", Estimates(200_000_000, 600, 1920, 1080, 0.05), AlreadyEfficient},
 	}
 	for _, c := range cases {
-		got := PreReason(c.e, 100_000_000, 0.12) != ""
-		if got != c.want {
-			t.Errorf("%s: rejected=%v want %v (%s)", c.name, got, c.want, PreReason(c.e, 100_000_000, 0.12))
+		if got := PreFilter(c.e, 100_000_000, 0.12); got != c.want {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
 		}
 	}
 }

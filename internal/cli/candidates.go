@@ -59,8 +59,8 @@ func findCandidates(ctx context.Context, s *session, minSize int64, cutoff confi
 				continue
 			}
 			est := estimate(a, s.cfg.BPP.EstimatedOutput)
-			if reason := selection.PreReason(est, minSize, s.cfg.BPP.ScanMin); reason != "" {
-				excluded[firstWord(reason)]++
+			if why := selection.PreFilter(est, minSize, s.cfg.BPP.ScanMin); why != selection.Candidate {
+				excluded[why.String()]++
 				continue
 			}
 			out = append(out, candidate{Asset: a, Est: est, Manifest: states[a.Id.String()]})
@@ -125,15 +125,4 @@ func deref(p *int) int {
 		return 0
 	}
 	return *p
-}
-
-func firstWord(reason string) string {
-	// Group pre-filter reasons ("estimated 0.081 bpp ...") by kind.
-	switch {
-	case len(reason) >= 9 && reason[:9] == "estimated":
-		return "already efficient (estimated bpp)"
-	case len(reason) >= 7 && reason[:7] == "smaller":
-		return "below minimum size"
-	}
-	return reason
 }

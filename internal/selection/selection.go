@@ -42,19 +42,49 @@ func Estimates(size int64, durationSec float64, width, height int, outBPP float6
 	return e
 }
 
-// PreReason explains why scan rejected an asset, or "" if it is a candidate.
-func PreReason(e Estimate, minSize int64, minBPP float64) string {
+// Rejection is why the API-data pre-filter turned a video down. The zero
+// value, Candidate, means it did not.
+type Rejection int
+
+const (
+	Candidate Rejection = iota
+	TooSmall
+	UnknownDuration
+	UnknownDimensions
+	AlreadyEfficient
+)
+
+// String is the label scan groups excluded videos under.
+func (r Rejection) String() string {
+	switch r {
+	case Candidate:
+		return "candidate"
+	case TooSmall:
+		return "below minimum size"
+	case UnknownDuration:
+		return "unknown duration"
+	case UnknownDimensions:
+		return "unknown dimensions"
+	case AlreadyEfficient:
+		return "already efficient (estimated bpp)"
+	}
+	return fmt.Sprintf("Rejection(%d)", int(r))
+}
+
+// PreFilter applies the checks that need only API data: size, and the bpp
+// estimated from it.
+func PreFilter(e Estimate, minSize int64, minBPP float64) Rejection {
 	switch {
 	case e.Size < minSize:
-		return fmt.Sprintf("smaller than %s", config.HumanBytes(minSize))
+		return TooSmall
 	case e.DurationSec <= 0:
-		return "unknown duration"
+		return UnknownDuration
 	case e.Width <= 0 || e.Height <= 0:
-		return "unknown dimensions"
+		return UnknownDimensions
 	case e.BPP < minBPP:
-		return fmt.Sprintf("estimated %.3f bpp is already below %.3f", e.BPP, minBPP)
+		return AlreadyEfficient
 	}
-	return ""
+	return Candidate
 }
 
 // Rank sorts candidates by estimated savings, largest first. savings returns
