@@ -57,8 +57,8 @@ func PreReason(e Estimate, minSize int64, minBPP float64) string {
 	return ""
 }
 
-// Rank sorts candidates by estimated savings, largest first. key returns the
-// savings for item i.
+// Rank sorts candidates by estimated savings, largest first. savings returns
+// the estimate for one item.
 func Rank[T any](items []T, savings func(T) int64) {
 	sort.SliceStable(items, func(i, j int) bool { return savings(items[i]) > savings(items[j]) })
 }
