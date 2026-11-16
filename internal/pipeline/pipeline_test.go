@@ -753,6 +753,21 @@ func TestStopRequestedBeforeRun(t *testing.T) {
 	}
 }
 
+// A Processor whose config never went through Finalize has Concurrency 0;
+// Run must still process the work rather than wait for workers that do not
+// exist.
+func TestRunWithoutConcurrencySet(t *testing.T) {
+	e := setup(t)
+	e.proc.Cfg.Concurrency = 0
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	// An id the server does not know is answered without any encoding.
+	out := e.proc.Run(ctx, []string{"00000000-0000-4000-8000-000000000000"})
+	if len(out) != 1 || out[0].Err == nil {
+		t.Fatalf("outcomes = %+v, want one failed lookup", out)
+	}
+}
+
 func TestHasWork(t *testing.T) {
 	rec := func(s manifest.State, crf int) manifest.Record { return manifest.Record{State: s, CRF: crf} }
 	cases := []struct {

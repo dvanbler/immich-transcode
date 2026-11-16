@@ -130,7 +130,8 @@ func (p *Processor) Run(ctx context.Context, ids []string) []Outcome {
 	var mu sync.Mutex
 	var outcomes []Outcome
 	var wg sync.WaitGroup
-	for range p.Cfg.Concurrency {
+	// At least one worker, or the feed loop below would block forever.
+	for range max(p.Cfg.Concurrency, 1) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
