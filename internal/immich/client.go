@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,7 +14,6 @@ import (
 	"net/http"
 	"net/textproto"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -33,8 +33,7 @@ type Asset = api.AssetResponseDto
 
 // Client talks to one Immich server with one API key.
 type Client struct {
-	api  *api.ClientWithResponses
-	raw  *api.Client
+	api  *api.Client
 	base string
 }
 
@@ -59,15 +58,11 @@ func New(serverURL, apiKey string) (*Client, error) {
 		req.Header.Set("Accept", "application/json")
 		return nil
 	})
-	c, err := api.NewClientWithResponses(base, api.WithHTTPClient(hc), auth)
+	c, err := api.NewClient(base, api.WithHTTPClient(hc), auth)
 	if err != nil {
 		return nil, err
 	}
-	raw, err := api.NewClient(base, api.WithHTTPClient(hc), auth)
-	if err != nil {
-		return nil, err
-	}
-	return &Client{api: c, raw: raw, base: base}, nil
+	return &Client{api: c, base: base}, nil
 }
 
 // HTTPError is a non-2xx response.
@@ -81,34 +76,49 @@ func (e *HTTPError) Error() string {
 	return fmt.Sprintf("%s: HTTP %d: %s", e.Op, e.Status, strings.TrimSpace(e.Body))
 }
 
-// generatedResponse is implemented by every *XxxResponse type that
-// oapi-codegen produces; each also has a Body []byte field.
-type generatedResponse interface{ StatusCode() int }
+// maxErrorBody bounds how much of a failed response an HTTPError keeps.
+const maxErrorBody = 500
 
-// check turns a transport error or non-2xx response into an error.
-func check(op string, r generatedResponse, err error) error {
+// read consumes and closes a response, turning a transport error or a
+// non-2xx status into an error. It takes the (response, error) pair of a
+// generated client call directly.
+func read(op string, resp *http.Response, err error) ([]byte, error) {
 	if err != nil {
-		return fmt.Errorf("%s: %w", op, err)
+		return nil, fmt.Errorf("%s: %w", op, err)
 	}
-	if code := r.StatusCode(); code < 200 || code > 299 {
-		b := reflect.ValueOf(r).Elem().FieldByName("Body").Bytes()
-		if len(b) > 500 {
-			b = b[:500]
-		}
-		return &HTTPError{Op: op, Status: code, Body: string(b)}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("%s: read response: %w", op, err)
 	}
-	return nil
-}
-
-// decoded returns the typed body of a response that passed check. The
-// generated parser fills it in only for the documented status with a JSON
-// content type, so anything else answering 2xx (an auth proxy's login page,
-// a server URL that is not Immich) leaves it nil.
-func decoded[T any](op string, r generatedResponse, body *T) (*T, error) {
-	if body == nil {
-		return nil, fmt.Errorf("%s: HTTP %d response is not the JSON Immich sends; check the server URL and any proxy in front of Immich", op, r.StatusCode())
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, &HTTPError{Op: op, Status: resp.StatusCode, Body: string(body[:min(len(body), maxErrorBody)])}
 	}
 	return body, nil
+}
+
+// decode reads a successful response whose body is a JSON T. Anything else
+// answering 2xx (an auth proxy's login page, a server URL that is not
+// Immich) is an error.
+func decode[T any](op string, resp *http.Response, err error) (*T, error) {
+	body, err := read(op, resp, err)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.Contains(resp.Header.Get("Content-Type"), "json") {
+		return nil, fmt.Errorf("%s: HTTP %d response is not the JSON Immich sends; check the server URL and any proxy in front of Immich", op, resp.StatusCode)
+	}
+	var v T
+	if err := json.Unmarshal(body, &v); err != nil {
+		return nil, fmt.Errorf("%s: decode response: %w", op, err)
+	}
+	return &v, nil
+}
+
+// discard reads a response only for its status.
+func discard(op string, resp *http.Response, err error) error {
+	_, err = read(op, resp, err)
+	return err
 }
 
 // Version is a server version.
@@ -118,11 +128,8 @@ func (v Version) String() string { return fmt.Sprintf("v%d.%d.%d", v.Major, v.Mi
 
 // ServerVersion returns the server's version.
 func (c *Client) ServerVersion(ctx context.Context) (Version, error) {
-	r, err := c.api.GetServerVersionWithResponse(ctx)
-	if err := check("get server version", r, err); err != nil {
-		return Version{}, err
-	}
-	v, err := decoded("get server version", r, r.JSON200)
+	resp, err := c.api.GetServerVersion(ctx)
+	v, err := decode[api.ServerVersionResponseDto]("get server version", resp, err)
 	if err != nil {
 		return Version{}, err
 	}
@@ -131,11 +138,8 @@ func (c *Client) ServerVersion(ctx context.Context) (Version, error) {
 
 // MissingPermissions returns which of want the API key lacks.
 func (c *Client) MissingPermissions(ctx context.Context, want []api.Permission) ([]api.Permission, error) {
-	r, err := c.api.GetMyApiKeyWithResponse(ctx)
-	if err := check("get API key", r, err); err != nil {
-		return nil, err
-	}
-	key, err := decoded("get API key", r, r.JSON200)
+	resp, err := c.api.GetMyApiKey(ctx)
+	key, err := decode[api.ApiKeyResponseDto]("get API key", resp, err)
 	if err != nil {
 		return nil, err
 	}
@@ -157,11 +161,8 @@ func (c *Client) MissingPermissions(ctx context.Context, want []api.Permission) 
 
 // MyUserID returns the id of the API key's owner.
 func (c *Client) MyUserID(ctx context.Context) (string, error) {
-	r, err := c.api.GetMyUserWithResponse(ctx)
-	if err := check("get current user", r, err); err != nil {
-		return "", err
-	}
-	user, err := decoded("get current user", r, r.JSON200)
+	resp, err := c.api.GetMyUser(ctx)
+	user, err := decode[api.UserAdminResponseDto]("get current user", resp, err)
 	if err != nil {
 		return "", err
 	}
@@ -195,11 +196,8 @@ func (c *Client) SearchVideos(ctx context.Context, minSize int64, takenBefore *t
 		req.Filter.TakenAt = &api.DateFilter{Lt: takenBefore}
 	}
 	for {
-		r, err := c.api.SearchAssetsWithResponse(ctx, nil, req)
-		if err := check("search assets", r, err); err != nil {
-			return err
-		}
-		res, err := decoded("search assets", r, r.JSON200)
+		resp, err := c.api.SearchAssets(ctx, nil, req)
+		res, err := decode[api.SearchResponseDto]("search assets", resp, err)
 		if err != nil {
 			return err
 		}
@@ -220,11 +218,8 @@ func (c *Client) GetAsset(ctx context.Context, id string) (*Asset, error) {
 	if err != nil {
 		return nil, err
 	}
-	r, err := c.api.GetAssetInfoWithResponse(ctx, uid, nil)
-	if err := check("get asset "+id, r, err); err != nil {
-		return nil, err
-	}
-	return decoded("get asset "+id, r, r.JSON200)
+	resp, err := c.api.GetAssetInfo(ctx, uid, nil)
+	return decode[Asset]("get asset "+id, resp, err)
 }
 
 // Download streams the original file of asset id into w and returns the
@@ -235,13 +230,13 @@ func (c *Client) Download(ctx context.Context, id string, w io.Writer, progress 
 		return "", 0, err
 	}
 	f := false
-	resp, err := c.raw.DownloadAsset(ctx, uid, &api.DownloadAssetParams{Edited: &f})
+	resp, err := c.api.DownloadAsset(ctx, uid, &api.DownloadAssetParams{Edited: &f})
 	if err != nil {
 		return "", 0, fmt.Errorf("download %s: %w", id, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 		return "", 0, &HTTPError{Op: "download " + id, Status: resp.StatusCode, Body: string(b)}
 	}
 	h := sha1.New()
@@ -281,7 +276,9 @@ func (c *Client) Upload(ctx context.Context, u UploadRequest, progress func(int6
 
 	pr, pw := io.Pipe()
 	mw := multipart.NewWriter(pw)
+	written := make(chan struct{})
 	go func() {
+		defer close(written)
 		err := writeUploadForm(mw, f, u, progress)
 		if err == nil {
 			err = mw.Close()
@@ -293,22 +290,16 @@ func (c *Client) Upload(ctx context.Context, u UploadRequest, progress func(int6
 	if u.SHA1Hex != "" {
 		params.XImmichChecksum = &u.SHA1Hex
 	}
-	resp, err := c.raw.UploadAssetWithBody(ctx, params, mw.FormDataContentType(), pr)
+	resp, err := c.api.UploadAssetWithBody(ctx, params, mw.FormDataContentType(), pr)
+	// Closing the read end fails any write still pending, so the goroutine
+	// is guaranteed to finish; wait for it before f is closed.
 	pr.CloseWithError(errors.New("upload finished"))
+	<-written
+	res, err := decode[api.AssetMediaResponseDto]("upload", resp, err)
 	if err != nil {
-		return UploadResult{}, fmt.Errorf("upload: %w", err)
-	}
-	r, err := api.ParseUploadAssetResponse(resp)
-	if err := check("upload", r, err); err != nil {
 		return UploadResult{}, err
 	}
-	switch {
-	case r.JSON201 != nil:
-		return UploadResult{ID: r.JSON201.Id.String()}, nil
-	case r.JSON200 != nil:
-		return UploadResult{ID: r.JSON200.Id.String(), Duplicate: r.JSON200.Status == api.Duplicate}, nil
-	}
-	return UploadResult{}, fmt.Errorf("upload: unexpected response %d: %s", resp.StatusCode, r.Body)
+	return UploadResult{ID: res.Id.String(), Duplicate: res.Status == api.Duplicate}, nil
 }
 
 func writeUploadForm(mw *multipart.Writer, f *os.File, u UploadRequest, progress func(int64)) error {
@@ -349,11 +340,11 @@ func (c *Client) CopyRelationships(ctx context.Context, from, to string) error {
 		return err
 	}
 	t := true
-	r, err := c.api.CopyAssetWithResponse(ctx, api.AssetCopyDto{
+	resp, err := c.api.CopyAsset(ctx, api.AssetCopyDto{
 		SourceId: src, TargetId: dst,
 		Albums: &t, Favorite: &t, SharedLinks: &t, Stack: &t, Sidecar: &t,
 	})
-	return check("copy asset", r, err)
+	return discard("copy asset", resp, err)
 }
 
 // UpdateAsset applies a partial update. PUT /assets/{id} is marked deprecated
@@ -363,8 +354,8 @@ func (c *Client) UpdateAsset(ctx context.Context, id string, dto api.UpdateAsset
 	if err != nil {
 		return err
 	}
-	r, err := c.api.UpdateAssetWithResponse(ctx, uid, dto)
-	return check("update asset "+id, r, err)
+	resp, err := c.api.UpdateAsset(ctx, uid, dto)
+	return discard("update asset "+id, resp, err)
 }
 
 // TagAsset adds tags to an asset.
@@ -373,8 +364,8 @@ func (c *Client) TagAsset(ctx context.Context, id string, tagIDs []openapi_types
 	if err != nil {
 		return err
 	}
-	r, err := c.api.BulkTagAssetsWithResponse(ctx, api.TagBulkAssetsDto{AssetIds: []openapi_types.UUID{uid}, TagIds: tagIDs})
-	return check("tag asset "+id, r, err)
+	resp, err := c.api.BulkTagAssets(ctx, api.TagBulkAssetsDto{AssetIds: []openapi_types.UUID{uid}, TagIds: tagIDs})
+	return discard("tag asset "+id, resp, err)
 }
 
 // Trash moves assets to the trash. It never force-deletes.
@@ -388,8 +379,8 @@ func (c *Client) Trash(ctx context.Context, ids ...string) error {
 		uids = append(uids, u)
 	}
 	f := false
-	r, err := c.api.DeleteAssetsWithResponse(ctx, api.AssetBulkDeleteDto{Ids: uids, Force: &f})
-	return check("trash assets", r, err)
+	resp, err := c.api.DeleteAssets(ctx, api.AssetBulkDeleteDto{Ids: uids, Force: &f})
+	return discard("trash assets", resp, err)
 }
 
 // Restore moves assets out of the trash.
@@ -398,8 +389,8 @@ func (c *Client) Restore(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	r, err := c.api.RestoreAssetsWithResponse(ctx, api.BulkIdsDto{Ids: []openapi_types.UUID{u}})
-	return check("restore asset "+id, r, err)
+	resp, err := c.api.RestoreAssets(ctx, api.BulkIdsDto{Ids: []openapi_types.UUID{u}})
+	return discard("restore asset "+id, resp, err)
 }
 
 // FileSHA1 returns the hex and base64 SHA-1 of a file.
