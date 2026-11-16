@@ -21,7 +21,7 @@ again.
 Only the manifest changes: nothing is sent to Immich, and backups are kept
 (a re-run verifies the existing backup by checksum instead of downloading).
 Done assets cannot be reset, and needs_confirm assets are continued with
---allow-face-loss instead.`,
+--allow-face-loss instead. "status --help" explains every state.`,
 		Example: `  immich-transcode reset --state skipped_corrupt
   immich-transcode reset --state skipped_efficient,skipped_low_gain
   immich-transcode reset --asset 62446a94-8936-4572-a8f4-a389841bc9a7`,
@@ -46,7 +46,7 @@ Done assets cannot be reset, and needs_confirm assets are continued with
 			wantState := map[manifest.State]bool{}
 			for _, st := range states {
 				if !resettable(manifest.State(st)) {
-					return fmt.Errorf("state %q cannot be reset (allowed: skipped_*, failed)", st)
+					return fmt.Errorf("state %q cannot be reset (allowed: skipped_*, failed; see `status --help`)", st)
 				}
 				wantState[manifest.State(st)] = true
 			}

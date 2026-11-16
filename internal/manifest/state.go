@@ -2,7 +2,10 @@
 // SQLite database so runs are resumable and idempotent.
 package manifest
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 // State is an asset's position in the pipeline. Each non-terminal state
 // names the last step that completed successfully.
@@ -48,10 +51,51 @@ var rank = func() map[State]int {
 	return m
 }()
 
+// outcomes lists the terminal states other than Done, which ends order.
+var outcomes = []State{
+	Restored, SkippedCorrupt, SkippedHDR, SkippedCodec, SkippedEff,
+	SkippedLowGain, SkippedOther, NeedsConfirm, Failed,
+}
+
+// descriptions is the user-facing meaning of each state, shown in help text.
+var descriptions = map[State]string{
+	Pending:        "recorded, nothing done yet; reset sends assets back here",
+	Downloaded:     "original backed up locally and its checksum verified",
+	DecodeOK:       "original decodes cleanly",
+	Probed:         "inspected with ffprobe and worth transcoding",
+	Transcoded:     "HEVC encode written to the work directory",
+	MetadataCopied: "metadata copied into the encode with exiftool",
+	Validated:      "encode passed every check; a dry run stops here",
+	Uploaded:       "replacement uploaded to Immich",
+	Copied:         "albums, favorite, shared links, stack and sidecar copied to it",
+	Patched:        "remaining differences (description, rating, date, location, tags) fixed",
+	Verified:       "timeline date and location confirmed to match the original",
+	Trashed:        "original moved to the Immich trash",
+	Done:           "replacement in place; the original is backed up locally",
+	Restored:       "backup put back in Immich in place of the replacement",
+	SkippedCorrupt: "original does not decode cleanly",
+	SkippedHDR:     "10-bit or HDR video, which is not handled",
+	SkippedCodec:   "already AV1",
+	SkippedEff:     "already below the bpp threshold for its codec",
+	SkippedLowGain: "encode was not at least min_savings_percent smaller",
+	SkippedOther:   "ffprobe could not read it as a video",
+	NeedsConfirm:   "named people would lose their face assignments; continue with --allow-face-loss",
+	Failed:         "a step failed (see DETAIL); try again with --retry-failed",
+}
+
+// All returns every state: the progress states in pipeline order, then the
+// other outcomes.
+func All() []State {
+	return slices.Concat(order, outcomes)
+}
+
+// Description is a one-line, user-facing explanation of s.
+func (s State) Description() string { return descriptions[s] }
+
 // Valid reports whether s is a state the manifest can hold.
 func (s State) Valid() bool {
-	_, progress := rank[s]
-	return progress || s.Terminal()
+	_, ok := descriptions[s]
+	return ok
 }
 
 // Terminal states are never processed again by run or resume, except

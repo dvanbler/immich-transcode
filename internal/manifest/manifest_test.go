@@ -75,6 +75,33 @@ func TestStatePredicates(t *testing.T) {
 	}
 }
 
+// All, the descriptions, Terminal and the pipeline order must agree, so help
+// text cannot drift from the states the pipeline uses.
+func TestAllStatesDescribed(t *testing.T) {
+	all := All()
+	if len(all) != len(descriptions) {
+		t.Errorf("All() has %d states, descriptions has %d", len(all), len(descriptions))
+	}
+	seen := map[State]bool{}
+	for _, s := range all {
+		if seen[s] {
+			t.Errorf("%s listed twice", s)
+		}
+		seen[s] = true
+		if s.Description() == "" || !s.Valid() {
+			t.Errorf("%s has no description", s)
+		}
+		if _, progress := rank[s]; !progress && !s.Terminal() {
+			t.Errorf("%s is neither a pipeline step nor terminal", s)
+		}
+	}
+	for _, s := range outcomes {
+		if !s.Terminal() {
+			t.Errorf("outcome %s is not terminal", s)
+		}
+	}
+}
+
 func TestStore(t *testing.T) {
 	ctx := context.Background()
 	st, err := Open(filepath.Join(t.TempDir(), "m.db"))

@@ -20,11 +20,19 @@ func (a *app) statusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show the manifest: each asset's state, bytes saved and failures",
+		Long: `Show every asset in the manifest with its state, sizes and, for failures and
+skips, the reason. Skipped and restored assets are hidden unless --all or
+--state asks for them. Nothing is changed and the server is not contacted.
+
+` + stateHelp(),
+		Example: `  immich-transcode status
+  immich-transcode status --state failed,needs_confirm
+  immich-transcode status --all`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			want := map[string]bool{}
 			for _, st := range states {
 				if !manifest.State(st).Valid() {
-					return fmt.Errorf("unknown state %q", st)
+					return fmt.Errorf("unknown state %q (valid states: %s)", st, stateNames())
 				}
 				want[st] = true
 			}
@@ -86,8 +94,34 @@ func (a *app) statusCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringSliceVar(&states, "state", nil, "only show these states (e.g. failed,needs_confirm)")
-	cmd.Flags().BoolVar(&all, "all", false, "include skipped assets")
+	cmd.Flags().BoolVar(&all, "all", false, "include skipped and restored assets")
 	return cmd
+}
+
+// stateHelp lists every state with its meaning, for help text.
+func stateHelp() string {
+	var b strings.Builder
+	section := func(title string, terminal bool) {
+		b.WriteString(title + "\n")
+		for _, st := range manifest.All() {
+			if st.Terminal() == terminal {
+				fmt.Fprintf(&b, "  %-20s %s\n", st, st.Description())
+			}
+		}
+	}
+	section("States of an asset partway through, each named for the last step that finished:", false)
+	b.WriteString("\n")
+	section("States of an asset that is finished or waiting for you:", true)
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// stateNames is every state name, comma separated.
+func stateNames() string {
+	names := make([]string, 0, len(manifest.All()))
+	for _, st := range manifest.All() {
+		names = append(names, string(st))
+	}
+	return strings.Join(names, ", ")
 }
 
 // hiddenNote says why status left hidden assets out of the table: --state
