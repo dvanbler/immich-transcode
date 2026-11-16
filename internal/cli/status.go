@@ -71,8 +71,8 @@ func (a *app) statusCmd() *cobra.Command {
 					newSize, savedCol, r.UpdatedAt.Local().Format("2006-01-02 15:04"), r.AssetID, r.FileName, truncate(detail, 100))
 			}
 			w.Flush()
-			if shown < len(recs) {
-				a.console.Printf("(%d skipped assets hidden; use --all)", len(recs)-shown)
+			if hidden := len(recs) - shown; hidden > 0 {
+				a.console.Printf("(%s)", hiddenNote(hidden, len(want) > 0))
 			}
 			a.console.Printf("\n%d assets in manifest %s", len(recs), cfg.ManifestPath)
 			for _, st := range slices.Sorted(maps.Keys(counts)) {
@@ -85,6 +85,15 @@ func (a *app) statusCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&states, "state", nil, "only show these states (e.g. failed,needs_confirm)")
 	cmd.Flags().BoolVar(&all, "all", false, "include skipped assets")
 	return cmd
+}
+
+// hiddenNote says why status left hidden assets out of the table: --state
+// selected other states, or (by default) they are skipped assets.
+func hiddenNote(hidden int, filtered bool) string {
+	if filtered {
+		return fmt.Sprintf("%d assets in other states not shown", hidden)
+	}
+	return fmt.Sprintf("%d skipped assets hidden; use --all", hidden)
 }
 
 func truncate(s string, n int) string {
