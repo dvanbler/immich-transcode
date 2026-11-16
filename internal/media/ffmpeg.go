@@ -157,6 +157,8 @@ func forceKeyFrames(times []float64) string {
 	return strings.Join(parts, ",")
 }
 
+// timeBase is the one place that knows the -enc_time_base default: "-1",
+// which every ffmpeg version understands as "keep the source's time base".
 func timeBase(flag string) string {
 	if flag == "" {
 		return "-1"
